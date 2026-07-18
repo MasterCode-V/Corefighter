@@ -1,0 +1,14 @@
+# Root context ignore (backend image)
+.git
+.venv
+venv
+__pycache__
+*.pyc
+.env
+frontend/node_modules
+frontend/dist
+data
+tools
+*.md
+.cursor
+agent-transcripts

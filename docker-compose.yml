@@ -1,0 +1,150 @@
+# CORE FIGHTER — full stack
+# Usage:
+#   cp .env.example .env   # set OPENAI_API_KEY, SECRET_KEY, ENCRYPTION_KEY
+#   docker compose up --build
+#   docker compose exec api python -m scripts.seed
+#
+# UI:   http://162.43.33.131:5173
+# API:  http://162.43.33.131:8000/docs
+# MinIO: http://162.43.33.131:9001  (minioadmin / minioadmin)
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: cf_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-corefighter}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-corefighter}
+      POSTGRES_DB: ${POSTGRES_DB:-corefighter}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-corefighter}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: cf_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: cf_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: cf_minio_init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:-corefighter-media}
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD);
+      do echo waiting for minio; sleep 2; done;
+      /usr/bin/mc mb --ignore-existing local/$$S3_BUCKET;
+      /usr/bin/mc anonymous set download local/$$S3_BUCKET;
+      echo bucket ready;
+      exit 0;
+      "
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cf_api
+    command: >
+      sh -c "python -m scripts.init_db &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    env_file: .env
+    environment:
+      POSTGRES_HOST: db
+      REDIS_HOST: redis
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_PUBLIC_URL: ${S3_PUBLIC_URL:-http://162.43.33.131:9000/corefighter-media}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://162.43.33.131:5173,http://162.43.33.131:8000}
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/code
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cf_worker
+    command: arq app.workers.settings.WorkerSettings
+    env_file: .env
+    environment:
+      POSTGRES_HOST: db
+      REDIS_HOST: redis
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_PUBLIC_URL: ${S3_PUBLIC_URL:-http://162.43.33.131:9000/corefighter-media}
+    volumes:
+      - .:/code
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      api:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cf_frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
