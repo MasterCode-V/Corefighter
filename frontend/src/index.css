@@ -390,3 +390,24 @@ button {
   border-color: rgba(15, 110, 86, 0.4);
   background: rgba(15, 110, 86, 0.08);
 }
+
+.topic-checks {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+
+.topic-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--ink);
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.topic-check input {
+  margin-top: 3px;
+  flex-shrink: 0;
+}

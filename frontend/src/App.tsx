@@ -50,6 +50,54 @@ function todayIso() {
   return new Date(d.getTime() - off * 60000).toISOString().slice(0, 10)
 }
 
+/** 記事への追加指示（チェックで選べるネタ） */
+const TOPIC_OPTIONS = [
+  {
+    id: 'jichi',
+    label: '昨今の自治ネタ',
+    prompt:
+      '本文のどこかで、札幌近辺の自治体・地域の身近な話題に軽く触れる（政治的な断定や批判は避け、親しみやすい雑談程度）。',
+  },
+  {
+    id: 'kensetsu',
+    label: '建築業界ネタ',
+    prompt:
+      '建築・建設業界の現場あるあるや業界ネタを1〜2文、自然に織り交ぜる（専門用語の羅列は避け、読者が楽しめる軽いトーン）。',
+  },
+  {
+    id: 'tenki',
+    label: '本日の天気',
+    prompt:
+      '本日の天気や季節感に軽く触れる。正確な予報データは無いので、季節・気温・空模様の雰囲気で自然に書く（断定しすぎない）。',
+  },
+  {
+    id: 'lunch',
+    label: '昼食メニュー（ランダム）',
+    prompt:
+      '昼食メニューをランダムに1つ挙げて、軽く雑談する（例：ラーメン、カレー、定食など）。商品紹介の邪魔にならない短さで。',
+  },
+  {
+    id: 'yasumi',
+    label: '明日休み（前日）',
+    prompt:
+      '「明日は休み」という前日の気分・現場の空気感に軽く触れる（休み明けの話題ではなく、前日としての雑談）。',
+  },
+  {
+    id: 'dekigoto',
+    label: '最近の出来事（雑談）',
+    prompt:
+      '最近のちょっとした出来事や日常雑談を1つ入れる。事実の捏造が過ぎないよう、一般的で無害なエピソードにする。',
+  },
+  {
+    id: 'kenzai',
+    label: '買い取った商品についての情報（どのように使われる建材か）',
+    prompt:
+      '買い取った商品が実際にどのように使われる建材・資材・道具か、用途や現場での使われ方をわかりやすく1〜2文で説明する（スペック羅列は禁止）。',
+  },
+] as const
+
+type TopicId = (typeof TOPIC_OPTIONS)[number]['id']
+
 // 買取方法が店頭以外（出張・宅配）のときは店舗を「買取場所」として扱わない。
 function locationDisabled(method: string) {
   return method !== '店頭'
@@ -119,6 +167,9 @@ export default function App() {
     manual_notes: '',
     user_instructions: '',
   })
+  const [topicFlags, setTopicFlags] = useState<Record<TopicId, boolean>>(() =>
+    Object.fromEntries(TOPIC_OPTIONS.map((t) => [t.id, false])) as Record<TopicId, boolean>,
+  )
   const [products, setProducts] = useState<ProductRow[]>([emptyProduct()])
   const [purchase, setPurchase] = useState<Purchase | null>(null)
   const [article, setArticle] = useState<Article | null>(null)
@@ -216,6 +267,30 @@ export default function App() {
     return { ...text, products: prods.length ? prods : undefined }
   }
 
+  function toggleTopic(id: TopicId) {
+    setTopicFlags((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  function buildUserInstructions(): string | undefined {
+    const selected = TOPIC_OPTIONS.filter((t) => topicFlags[t.id])
+    const parts: string[] = []
+    if (selected.length) {
+      parts.push('【本文に織り交ぜる追加ネタ（チェック済み）】')
+      selected.forEach((t, i) => {
+        parts.push(`${i + 1}. ${t.label}: ${t.prompt}`)
+      })
+      parts.push(
+        '上記ネタはすべて本文に自然に含めること。ただし電話番号・フッター・価格は書かない。商品事実の捏造は禁止。',
+      )
+    }
+    const free = form.user_instructions.trim()
+    if (free) {
+      parts.push('【スタッフ自由記入】')
+      parts.push(free)
+    }
+    return parts.length ? parts.join('\n') : undefined
+  }
+
   async function onLogin(e: FormEvent) {
     e.preventDefault()
     setError('')
@@ -311,7 +386,7 @@ export default function App() {
       const { job_id } = await generateArticle(
         token,
         purchase.id,
-        form.user_instructions || undefined,
+        buildUserInstructions(),
       )
       const job = await pollJob(token, job_id, (j) => {
         setJobStatus(j.status)
@@ -534,6 +609,9 @@ export default function App() {
       manual_notes: '',
       user_instructions: '',
     })
+    setTopicFlags(
+      Object.fromEntries(TOPIC_OPTIONS.map((t) => [t.id, false])) as Record<TopicId, boolean>,
+    )
     setProducts([emptyProduct()])
     pushLog('リセット — 新しい買取テストを開始')
   }
@@ -883,10 +961,26 @@ export default function App() {
               </div>
               <div className="field">
                 <label>記事への追加指示</label>
+                <p className="meta" style={{ marginTop: 0 }}>
+                  入れたいネタにチェックを入れてください（複数可）。必要なら下に自由文も追加できます。
+                </p>
+                <div className="topic-checks">
+                  {TOPIC_OPTIONS.map((t) => (
+                    <label key={t.id} className="topic-check">
+                      <input
+                        type="checkbox"
+                        checked={!!topicFlags[t.id]}
+                        onChange={() => toggleTopic(t.id)}
+                      />
+                      <span>{t.label}</span>
+                    </label>
+                  ))}
+                </div>
                 <textarea
                   value={form.user_instructions}
                   onChange={(e) => setForm({ ...form, user_instructions: e.target.value })}
-                  placeholder="トーン、長さ、強調したいポイントなど…"
+                  placeholder="その他の指示（トーン、長さ、強調したいポイントなど）…"
+                  style={{ marginTop: 8 }}
                 />
               </div>
             </div>

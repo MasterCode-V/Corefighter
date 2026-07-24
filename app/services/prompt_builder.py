@@ -378,6 +378,11 @@ def build_buyersbox_user_prompt(
     if combined:
         lines.append("\n## スタッフ追加指示（優先）")
         lines.append(combined)
+        if "【本文に織り交ぜる追加ネタ" in combined:
+            lines.append(
+                "チェック済みの追加ネタは本文の自然な流れの中に短く織り交ぜること。"
+                "商品紹介が主役であり、ネタで本文を埋め尽くさないこと。"
+            )
 
     if regeneration_instruction:
         lines.append("\n## 再生成の指示")
