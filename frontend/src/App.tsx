@@ -492,6 +492,7 @@ export default function App() {
   function startEditing() {
     const v = article?.current_version
     if (!v) return
+    setTplOpen(false)
     setEdit({
       title: v.title || '',
       body: v.body || '',
@@ -553,7 +554,11 @@ export default function App() {
   }
 
   async function openTemplateEditor() {
-    if (!token || !storeId) return
+    if (!token || !storeId) {
+      setError('掲載店舗を選択してください')
+      return
+    }
+    setEditing(false)
     try {
       const { resolved } = await getArticleTemplate(token, storeId)
       setTpl({
@@ -563,6 +568,7 @@ export default function App() {
         footer_html: String(resolved.footer_html ?? ''),
       })
       setTplOpen(true)
+      pushLog('店舗テンプレート編集を開きました')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'テンプレートの取得に失敗しました')
     }
@@ -599,6 +605,7 @@ export default function App() {
     setDetailFiles([])
     setJobStatus('')
     setEditing(false)
+    setTplOpen(false)
     setRelated(null)
     setRelatedMsg('')
     setStep('input')
@@ -1033,7 +1040,7 @@ export default function App() {
               </>
             )}
 
-            {version && !editing && (
+            {version && !editing && !tplOpen && (
               <div className="article-preview" style={{ marginTop: 16 }}>
                 <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                   <h3 style={{ margin: 0 }}>{version.title || '（タイトルなし）'}</h3>
@@ -1072,9 +1079,19 @@ export default function App() {
 
             {version && tplOpen && (
               <div className="article-preview" style={{ marginTop: 16 }}>
-                <h3 style={{ margin: '0 0 4px' }}>店舗テンプレート編集（フッター・電話番号など）</h3>
+                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 style={{ margin: '0 0 4px' }}>店舗テンプレート編集</h3>
+                  <button
+                    className="btn btn-ghost"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setTplOpen(false)}
+                  >
+                    記事プレビューに戻る
+                  </button>
+                </div>
                 <p className="meta" style={{ marginTop: 0 }}>
-                  ここでの変更はこの店舗の今後の記事すべてに反映されます（記事下部の定型文）。
+                  電話番号・住所などの定型文を編集します。保存するとこの店舗の今後の記事に反映されます。
                 </p>
                 <div className="field">
                   <label>感謝の一文（赤太字）</label>
@@ -1100,14 +1117,14 @@ export default function App() {
                   </div>
                 </div>
                 <div className="field">
-                  <label>フッターHTML（住所・定型文）</label>
+                  <label>フッター定型文</label>
                   <textarea
-                    style={{ minHeight: 220, fontFamily: 'monospace' }}
+                    style={{ minHeight: 220 }}
                     value={tpl.footer_html}
                     onChange={(e) => setTpl({ ...tpl, footer_html: e.target.value })}
                   />
                   <p className="meta">
-                    電話番号を差し込む場合は <code>{'{phone_general}'}</code> /{' '}
+                    電話番号の差し込みには <code>{'{phone_general}'}</code> /{' '}
                     <code>{'{phone_dispatch}'}</code> が使えます。
                   </p>
                 </div>
@@ -1208,7 +1225,7 @@ export default function App() {
               </div>
             )}
 
-            {version && !editing && (
+            {version && !editing && !tplOpen && (
               <div style={{ marginTop: 16 }}>
                 <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                   <h3 style={{ margin: 0, fontSize: '0.95rem' }}>
