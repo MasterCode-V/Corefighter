@@ -37,6 +37,7 @@ class PurchaseCreate(BaseModel):
     persona_id: Optional[uuid.UUID] = None
     purchase_date: Optional[str] = None
     purchase_method: Optional[str] = None
+    purchase_area: Optional[str] = None
     quantity: int = 1
     quantity_unit: str = "点"
     manufacturer: Optional[str] = None
@@ -60,6 +61,7 @@ class PurchaseUpdate(BaseModel):
     persona_id: Optional[uuid.UUID] = None
     purchase_date: Optional[str] = None
     purchase_method: Optional[str] = None
+    purchase_area: Optional[str] = None
     quantity: Optional[int] = None
     quantity_unit: Optional[str] = None
     manufacturer: Optional[str] = None
@@ -99,6 +101,7 @@ class PurchaseRead(BaseModel):
     status: PurchaseStatus
     purchase_date: Optional[str]
     purchase_method: Optional[str]
+    purchase_area: Optional[str]
     quantity: int
     quantity_unit: str
     manufacturer: Optional[str]

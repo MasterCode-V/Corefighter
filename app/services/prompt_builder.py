@@ -294,6 +294,7 @@ def build_buyersbox_user_prompt(
         "店舗の呼び方": store_call,
         "エリア（SEO）": area,
         "買取方法": purchase.purchase_method,
+        "買取地区": getattr(purchase, "purchase_area", None),
         "メーカー": maker,
         "商品名": product,
         "型番": model,

@@ -41,7 +41,8 @@ class Purchase(UUIDMixin, TimestampMixin, Base):
 
     # ---- Buyback header info (matches the store's paper form) ----
     purchase_date: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)   # 日付 e.g. 7/14
-    purchase_method: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)  # 買取方法 店頭/出張
+    purchase_method: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)  # 買取方法 店頭/出張/宅配
+    purchase_area: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # 買取地区（店頭は「—」）
     quantity: Mapped[int] = mapped_column(Integer, default=1, nullable=False)          # 個数
     quantity_unit: Mapped[str] = mapped_column(String(16), default="点", nullable=False)  # 台/点/本...
 

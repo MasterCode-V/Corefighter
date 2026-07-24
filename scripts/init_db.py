@@ -27,6 +27,7 @@ UPGRADE_SQL = [
     "ALTER TABLE stores ADD COLUMN IF NOT EXISTS article_config JSONB DEFAULT '{}'::jsonb",
     "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS purchase_date VARCHAR(64)",
     "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS purchase_method VARCHAR(32)",
+    "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS purchase_area VARCHAR(255)",
     "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1 NOT NULL",
     "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS quantity_unit VARCHAR(16) DEFAULT '点' NOT NULL",
     "ALTER TABLE article_versions ADD COLUMN IF NOT EXISTS rendered_html TEXT DEFAULT ''",

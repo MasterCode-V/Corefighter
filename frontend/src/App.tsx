@@ -98,9 +98,9 @@ const TOPIC_OPTIONS = [
 
 type TopicId = (typeof TOPIC_OPTIONS)[number]['id']
 
-// 買取方法が店頭以外（出張・宅配）のときは店舗を「買取場所」として扱わない。
-function locationDisabled(method: string) {
-  return method !== '店頭'
+// 店頭のときは買取地区を手入力せず「—」固定。出張・宅配は手入力。
+function areaIsManual(method: string) {
+  return method === '出張' || method === '宅配'
 }
 
 type ProductRow = {
@@ -162,6 +162,7 @@ export default function App() {
   const [form, setForm] = useState({
     purchase_date: todayIso(),
     purchase_method: '店頭',
+    purchase_area: '—',
     category: '',
     characteristics: '',
     manual_notes: '',
@@ -428,7 +429,7 @@ export default function App() {
       return
     }
     if (!storeId) {
-      setError('買取場所を選択してください')
+      setError('掲載店舗を選択してください')
       return
     }
     if (!articleFiles.length && !detailFiles.length) {
@@ -604,6 +605,7 @@ export default function App() {
     setForm({
       purchase_date: todayIso(),
       purchase_method: '店頭',
+      purchase_area: '—',
       category: '',
       characteristics: '',
       manual_notes: '',
@@ -725,7 +727,18 @@ export default function App() {
             <label>買取方法</label>
             <select
               value={form.purchase_method}
-              onChange={(e) => setForm({ ...form, purchase_method: e.target.value })}
+              onChange={(e) => {
+                const method = e.target.value
+                setForm((f) => ({
+                  ...f,
+                  purchase_method: method,
+                  purchase_area: areaIsManual(method)
+                    ? f.purchase_area === '—'
+                      ? ''
+                      : f.purchase_area
+                    : '—',
+                }))
+              }}
             >
               <option value="店頭">店頭</option>
               <option value="出張">出張</option>
@@ -734,52 +747,34 @@ export default function App() {
           </div>
 
           <div className="field">
-            <label>買取場所{locationDisabled(form.purchase_method) ? '（担当店舗）' : ''}</label>
-            {locationDisabled(form.purchase_method) ? (
-              <input value="—" disabled title="店頭以外のため買取場所は表示しません（担当店舗は下で選択）" />
+            <label>買取地区</label>
+            {areaIsManual(form.purchase_method) ? (
+              <input
+                value={form.purchase_area}
+                placeholder="例）札幌市東区 / 白石区など"
+                onChange={(e) => setForm({ ...form, purchase_area: e.target.value })}
+              />
             ) : (
-              <select
-                value={storeId}
-                onChange={(e) => setStoreId(e.target.value)}
-                disabled={!!purchase}
-              >
-                {stores.map((s) => {
-                  const label =
-                    (s.article_config?.label as string | undefined) ||
-                    s.name.replace(/^パワフルトレードセンター\s*/, '').replace(/店$/, '') ||
-                    s.code
-                  return (
-                    <option key={s.id} value={s.id}>
-                      {label}
-                    </option>
-                  )
-                })}
-              </select>
+              <input value="—" disabled title="店頭買取のため買取地区は「—」固定です" />
             )}
           </div>
 
-          {locationDisabled(form.purchase_method) && (
-            <div className="field">
-              <label>担当店舗（記事の掲載店舗）</label>
-              <select
-                value={storeId}
-                onChange={(e) => setStoreId(e.target.value)}
-                disabled={!!purchase}
-              >
-                {stores.map((s) => {
-                  const label =
-                    (s.article_config?.label as string | undefined) ||
-                    s.name.replace(/^パワフルトレードセンター\s*/, '').replace(/店$/, '') ||
-                    s.code
-                  return (
-                    <option key={s.id} value={s.id}>
-                      {label}
-                    </option>
-                  )
-                })}
-              </select>
-            </div>
-          )}
+          <div className="field">
+            <label>掲載店舗</label>
+            <select value={storeId} onChange={(e) => setStoreId(e.target.value)} disabled={!!purchase}>
+              {stores.map((s) => {
+                const label =
+                  (s.article_config?.label as string | undefined) ||
+                  s.name.replace(/^パワフルトレードセンター\s*/, '').replace(/店$/, '') ||
+                  s.code
+                return (
+                  <option key={s.id} value={s.id}>
+                    {label}
+                  </option>
+                )
+              })}
+            </select>
+          </div>
 
           {step === 'input' && (
             <div

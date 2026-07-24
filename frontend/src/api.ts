@@ -49,6 +49,7 @@ export type Purchase = {
   status: string
   purchase_date: string | null
   purchase_method: string | null
+  purchase_area: string | null
   quantity: number
   quantity_unit: string
   manufacturer: string | null
@@ -156,6 +157,7 @@ export async function createPurchase(
     persona_id?: string | null
     purchase_date?: string
     purchase_method?: string
+    purchase_area?: string
     quantity?: number
     quantity_unit?: string
     manufacturer?: string
