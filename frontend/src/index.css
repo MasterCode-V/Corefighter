@@ -162,6 +162,15 @@ button {
   color: var(--ink);
 }
 
+.field input[type='checkbox'],
+.field input[type='radio'] {
+  width: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 0;
+}
+
 .field textarea {
   min-height: 88px;
   resize: vertical;
@@ -395,19 +404,35 @@ button {
   display: grid;
   gap: 8px;
   margin: 8px 0 4px;
+  width: 100%;
 }
 
 .topic-check {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
   font-size: 0.9rem;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--ink);
   cursor: pointer;
-  line-height: 1.4;
+  line-height: 1.45;
+  writing-mode: horizontal-tb;
 }
 
 .topic-check input {
-  margin-top: 3px;
-  flex-shrink: 0;
+  width: auto !important;
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.topic-check span {
+  flex: 1 1 auto;
+  min-width: 0;
+  writing-mode: horizontal-tb;
+  white-space: normal;
+  word-break: normal;
 }
