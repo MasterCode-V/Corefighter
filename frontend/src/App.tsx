@@ -10,7 +10,7 @@ import {
   type User,
 } from './api'
 import { useRoute } from './lib/router'
-import { roleLabel } from './lib/format'
+import { explainWorkflowError, roleLabel } from './lib/format'
 import AdminPage from './pages/AdminPage'
 import ArticleListPage from './pages/ArticleListPage'
 import GeneratePage from './pages/GeneratePage'
@@ -60,7 +60,7 @@ export default function App() {
         localStorage.removeItem(TOKEN_KEY)
         setToken(null)
         setUser(null)
-        setBootError(err instanceof Error ? err.message : 'セッションの有効期限が切れました')
+        setBootError(explainWorkflowError(err, 'セッションの有効期限が切れました'))
       }
     })()
     return () => {

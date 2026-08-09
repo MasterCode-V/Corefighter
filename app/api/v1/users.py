@@ -24,7 +24,7 @@ async def _resolve_personas(db: AsyncSession, persona_ids: Sequence[uuid.UUID]) 
     if missing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unknown persona(s): {', '.join(str(m) for m in missing)}",
+            detail=f"不明なAIペルソナです: {', '.join(str(m) for m in missing)}",
         )
     return personas
 
@@ -40,7 +40,7 @@ async def list_users(db: DBSession) -> list[User]:
 async def create_user(db: DBSession, body: UserCreate) -> User:
     exists = await db.execute(select(User).where(User.email == body.email))
     if exists.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="このメールアドレスは既に登録されています")
     user = User(
         email=body.email,
         full_name=body.full_name,
@@ -59,7 +59,7 @@ async def create_user(db: DBSession, body: UserCreate) -> User:
 async def get_user(db: DBSession, user_id: uuid.UUID) -> User:
     user = await db.get(User, user_id)
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ユーザーが見つかりません")
     return user
 
 
@@ -67,7 +67,7 @@ async def get_user(db: DBSession, user_id: uuid.UUID) -> User:
 async def update_user(db: DBSession, user_id: uuid.UUID, body: UserUpdate) -> User:
     user = await db.get(User, user_id)
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ユーザーが見つかりません")
     data = body.model_dump(exclude_unset=True)
     if "password" in data and data["password"]:
         user.hashed_password = hash_password(data.pop("password"))
@@ -88,11 +88,11 @@ async def update_user(db: DBSession, user_id: uuid.UUID, body: UserUpdate) -> Us
 async def delete_user(db: DBSession, current_user: CurrentUser, user_id: uuid.UUID) -> None:
     user = await db.get(User, user_id)
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ユーザーが見つかりません")
     if user.id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You cannot delete the account you are signed in with",
+            detail="ログイン中のアカウントは削除できません",
         )
     await db.delete(user)
     await db.commit()

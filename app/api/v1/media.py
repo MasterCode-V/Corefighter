@@ -13,11 +13,11 @@ router = APIRouter()
 @router.get("/{object_key:path}")
 async def get_media(object_key: str) -> Response:
     if not object_key or ".." in object_key:
-        raise HTTPException(status_code=400, detail="Invalid media key")
+        raise HTTPException(status_code=400, detail="不正なメディアキーです")
     try:
         data = await storage.download_bytes(object_key)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=404, detail="Media not found") from exc
+        raise HTTPException(status_code=404, detail="メディアが見つかりません") from exc
 
     content_type = "application/octet-stream"
     lower = object_key.lower()

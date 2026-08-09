@@ -10,6 +10,7 @@ import {
   type Store,
 } from '../api'
 import {
+  explainWorkflowError,
   formatJaDate,
   plainText,
   shortStoreName,
@@ -90,7 +91,7 @@ export default function ArticleListPage({
       setTotal(pageData.total)
       setStats(statData)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '記事一覧の取得に失敗しました')
+      setError(explainWorkflowError(err, '記事一覧の取得に失敗しました'))
     } finally {
       setLoading(false)
     }
@@ -132,7 +133,7 @@ export default function ArticleListPage({
     try {
       setPreview(await getArticle(token, item.id))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'プレビューの取得に失敗しました')
+      setError(explainWorkflowError(err, 'プレビューの取得に失敗しました'))
     } finally {
       setPreviewBusy(false)
     }
@@ -146,7 +147,7 @@ export default function ArticleListPage({
       setPendingDelete(null)
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : '削除に失敗しました')
+      setError(explainWorkflowError(err, '削除に失敗しました'))
     } finally {
       setDeleting(false)
     }

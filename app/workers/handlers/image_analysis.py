@@ -145,9 +145,9 @@ async def handle_image_analysis(db, job: Job, ctx: dict | None = None) -> dict:
     )
     purchase = result.scalar_one_or_none()
     if purchase is None:
-        raise ValueError("Purchase not found for image analysis")
+        raise ValueError("画像解析対象の買取データが見つかりません")
     if not purchase.images:
-        raise ValueError("No images to analyze")
+        raise ValueError("解析する画像がありません")
 
     purchase.status = PurchaseStatus.IMAGE_ANALYSIS_RUNNING
     await db.commit()

@@ -51,7 +51,7 @@ async def _get_article(db, article_id: uuid.UUID) -> Article:
     )
     article = result.scalar_one_or_none()
     if not article:
-        raise HTTPException(status_code=404, detail="Article not found")
+        raise HTTPException(status_code=404, detail="記事が見つかりません")
     return article
 
 
@@ -333,7 +333,7 @@ async def edit_article(
     ensure_store_access(current_user, article.store_id)
     current = article.current_version
     if not current:
-        raise HTTPException(status_code=400, detail="Article has no version to edit")
+        raise HTTPException(status_code=400, detail="編集できる記事バージョンがありません")
 
     merged = {
         "title": body.title if body.title is not None else current.title,

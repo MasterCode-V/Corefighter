@@ -70,7 +70,7 @@ async def create_store(db: DBSession, body: StoreCreate) -> Store:
 async def get_store(db: DBSession, store_id: uuid.UUID) -> Store:
     store = await db.get(Store, store_id)
     if not store:
-        raise HTTPException(status_code=404, detail="Store not found")
+        raise HTTPException(status_code=404, detail="店舗が見つかりません")
     return store
 
 
@@ -78,7 +78,7 @@ async def get_store(db: DBSession, store_id: uuid.UUID) -> Store:
 async def update_store(db: DBSession, store_id: uuid.UUID, body: StoreUpdate) -> Store:
     store = await db.get(Store, store_id)
     if not store:
-        raise HTTPException(status_code=404, detail="Store not found")
+        raise HTTPException(status_code=404, detail="店舗が見つかりません")
     for key, value in body.model_dump(exclude_unset=True).items():
         setattr(store, key, value)
     await db.commit()
@@ -93,7 +93,7 @@ async def get_article_template(
     """Return the store's fully-resolved article template (defaults + overrides)."""
     store = await db.get(Store, store_id)
     if not store:
-        raise HTTPException(status_code=404, detail="Store not found")
+        raise HTTPException(status_code=404, detail="店舗が見つかりません")
     ensure_store_access(current_user, store_id)
     cfg = article_template.resolve_config(store)
     return {"resolved": cfg, "overrides": store.article_config or {}}
@@ -111,7 +111,7 @@ async def update_article_template(
     """
     store = await db.get(Store, store_id)
     if not store:
-        raise HTTPException(status_code=404, detail="Store not found")
+        raise HTTPException(status_code=404, detail="店舗が見つかりません")
     ensure_store_access(current_user, store_id)
     overrides = dict(store.article_config or {})
     for key, value in body.model_dump(exclude_unset=True).items():
@@ -141,7 +141,7 @@ async def create_wp_site(
 ) -> WordPressSite:
     store = await db.get(Store, store_id)
     if not store:
-        raise HTTPException(status_code=404, detail="Store not found")
+        raise HTTPException(status_code=404, detail="店舗が見つかりません")
     data = body.model_dump()
     app_password = data.pop("app_password").replace(" ", "")
     site = WordPressSite(
@@ -162,7 +162,7 @@ async def update_wp_site(
 ) -> WordPressSite:
     site = await db.get(WordPressSite, site_id)
     if not site:
-        raise HTTPException(status_code=404, detail="WordPress site not found")
+        raise HTTPException(status_code=404, detail="WordPress接続設定が見つかりません")
     data = body.model_dump(exclude_unset=True)
     if data.get("app_password"):
         site.encrypted_app_password = encrypt_secret(data.pop("app_password").replace(" ", ""))

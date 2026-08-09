@@ -27,7 +27,7 @@ async def get_current_user(
 ) -> User:
     credentials_exc = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
+        detail="認証に失敗しました。再ログインしてください",
         headers={"WWW-Authenticate": "Bearer"},
     )
     payload = decode_token(token)
@@ -55,7 +55,7 @@ def require_roles(*roles: UserRole):
         if current_user.role not in roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Insufficient permissions for this action",
+                detail="この操作を行う権限がありません",
             )
         return current_user
 
@@ -73,7 +73,7 @@ def ensure_store_access(user: User, store_id: uuid.UUID) -> None:
     if user.store_id != store_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have access to this store's resources",
+            detail="この店舗のデータにアクセスする権限がありません",
         )
 
 

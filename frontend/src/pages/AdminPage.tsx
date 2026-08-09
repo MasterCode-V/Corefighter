@@ -11,7 +11,7 @@ import {
   type Store,
   type User,
 } from '../api'
-import { roleLabel } from '../lib/format'
+import { explainWorkflowError, roleLabel } from '../lib/format'
 import { PlusIcon, TrashIcon, UserIcon } from '../ui/Icons'
 import { Banner, ConfirmDialog, Field, PanelTitle, Toggle } from '../ui/Layout'
 
@@ -68,7 +68,7 @@ export default function AdminPage({
       setUsers(u)
       setDraft((d) => (d.id ? d : p[0] ? toDraft(p[0]) : NEW_PERSONA))
     } catch (err) {
-      setError(err instanceof Error ? err.message : '管理データの取得に失敗しました')
+      setError(explainWorkflowError(err, '管理データの取得に失敗しました'))
     }
   }, [token])
 
@@ -118,7 +118,7 @@ export default function AdminPage({
       await load()
       onPersonasChanged()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'AI人格の保存に失敗しました')
+      setError(explainWorkflowError(err, 'AI人格の保存に失敗しました'))
     } finally {
       setBusy(false)
     }
@@ -134,7 +134,7 @@ export default function AdminPage({
       await load()
       onPersonasChanged()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'AI人格の削除に失敗しました')
+      setError(explainWorkflowError(err, 'AI人格の削除に失敗しました'))
     } finally {
       setBusy(false)
     }
@@ -168,7 +168,7 @@ export default function AdminPage({
       setNotice('アカウントを発行しました。')
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'アカウントの発行に失敗しました')
+      setError(explainWorkflowError(err, 'アカウントの発行に失敗しました'))
     } finally {
       setBusy(false)
     }
@@ -182,7 +182,7 @@ export default function AdminPage({
       setUserToDelete(null)
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'アカウントの削除に失敗しました')
+      setError(explainWorkflowError(err, 'アカウントの削除に失敗しました'))
     } finally {
       setBusy(false)
     }

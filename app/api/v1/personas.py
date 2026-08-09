@@ -48,7 +48,7 @@ async def create_persona(db: DBSession, body: PersonaCreate) -> Persona:
 async def get_persona(db: DBSession, persona_id: uuid.UUID) -> Persona:
     persona = await db.get(Persona, persona_id)
     if not persona:
-        raise HTTPException(status_code=404, detail="Persona not found")
+        raise HTTPException(status_code=404, detail="AIペルソナが見つかりません")
     return persona
 
 
@@ -57,7 +57,7 @@ async def get_persona(db: DBSession, persona_id: uuid.UUID) -> Persona:
 async def update_persona(db: DBSession, persona_id: uuid.UUID, body: PersonaUpdate) -> Persona:
     persona = await db.get(Persona, persona_id)
     if not persona:
-        raise HTTPException(status_code=404, detail="Persona not found")
+        raise HTTPException(status_code=404, detail="AIペルソナが見つかりません")
     for key, value in body.model_dump(exclude_unset=True).items():
         setattr(persona, key, value)
     await db.commit()
@@ -70,6 +70,6 @@ async def update_persona(db: DBSession, persona_id: uuid.UUID, body: PersonaUpda
 async def delete_persona(db: DBSession, persona_id: uuid.UUID) -> None:
     persona = await db.get(Persona, persona_id)
     if not persona:
-        raise HTTPException(status_code=404, detail="Persona not found")
+        raise HTTPException(status_code=404, detail="AIペルソナが見つかりません")
     await db.delete(persona)
     await db.commit()

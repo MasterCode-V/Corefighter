@@ -26,10 +26,10 @@ async def _authenticate(db, email: str, password: str) -> User:
     user = result.scalar_one_or_none()
     if not user or not verify_password(password, user.hashed_password):
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="メールアドレスまたはパスワードが正しくありません"
         )
     if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="このアカウントは無効です")
     return user
 
 
@@ -52,10 +52,10 @@ async def login(db: DBSession, form: OAuth2PasswordRequestForm = Depends()) -> T
 async def refresh(db: DBSession, body: RefreshRequest) -> Token:
     payload = decode_token(body.refresh_token)
     if not payload or payload.get("type") != "refresh":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="リフレッシュトークンが無効です")
     user = await db.get(User, uuid.UUID(payload["sub"]))
     if not user or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="リフレッシュトークンが無効です")
     return _tokens(user)
 
 

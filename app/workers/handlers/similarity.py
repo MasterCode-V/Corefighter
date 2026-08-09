@@ -32,10 +32,10 @@ TOP_K = 5
 async def handle_similarity_check(db, job: Job, ctx: dict | None = None) -> dict:
     article = await db.get(Article, job.article_id)
     if article is None:
-        raise ValueError("Article not found")
+        raise ValueError("記事が見つかりません")
     version = await db.get(ArticleVersion, article.current_version_id) if article.current_version_id else None
     if version is None:
-        raise ValueError("Article has no current version")
+        raise ValueError("記事に現行バージョンがありません")
 
     purchase = await db.get(Purchase, article.purchase_id)
     store = await db.get(Store, article.store_id)

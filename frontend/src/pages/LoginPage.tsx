@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import logo from '../assets/logo-navy.png'
+import { explainWorkflowError } from '../lib/format'
 import { Banner } from '../ui/Layout'
 
 export default function LoginPage({
@@ -19,7 +20,7 @@ export default function LoginPage({
     try {
       await onSubmit(email.trim(), password)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'ログインに失敗しました')
+      setError(explainWorkflowError(err, 'ログインに失敗しました'))
     } finally {
       setBusy(false)
     }

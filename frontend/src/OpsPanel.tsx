@@ -23,7 +23,7 @@ import {
   updateWordpressSite,
 } from './api'
 import type { Article, DashboardSummary, Job, Purchase, Store } from './api'
-import { plainText } from './lib/format'
+import { explainWorkflowError, plainText } from './lib/format'
 
 type Props = {
   token: string
@@ -117,7 +117,7 @@ export default function OpsPanel({ token, stores, onOpenArticle }: Props) {
       ).flat()
       setWpSites(sites)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '運用データの取得に失敗しました')
+      setError(explainWorkflowError(err, '運用データの取得に失敗しました'))
     }
   }, [token, stores])
 
@@ -135,7 +135,7 @@ export default function OpsPanel({ token, stores, onOpenArticle }: Props) {
       })
       setArticles(rows)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '記事一覧の取得に失敗')
+      setError(explainWorkflowError(err, '記事一覧の取得に失敗'))
     }
   }, [token, articleStatus, articleSearch])
 
@@ -159,7 +159,7 @@ export default function OpsPanel({ token, stores, onOpenArticle }: Props) {
       await refresh()
       if (tab === 'articles') await loadArticles()
     } catch (err) {
-      setError(err instanceof Error ? err.message : `${label}に失敗しました`)
+      setError(explainWorkflowError(err, `${label}に失敗しました`))
     } finally {
       setBusy(false)
     }
@@ -200,7 +200,7 @@ export default function OpsPanel({ token, stores, onOpenArticle }: Props) {
       setWpForm((f) => ({ ...f, app_password: '' }))
       await refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'WordPress接続の保存に失敗')
+      setError(explainWorkflowError(err, 'WordPress接続の保存に失敗'))
     } finally {
       setBusy(false)
     }
@@ -403,7 +403,7 @@ export default function OpsPanel({ token, stores, onOpenArticle }: Props) {
                       setNote('')
                       await refresh()
                     } catch (err) {
-                      setError(err instanceof Error ? err.message : '申請に失敗')
+                      setError(explainWorkflowError(err, '申請に失敗'))
                     } finally {
                       setBusy(false)
                     }
@@ -460,7 +460,7 @@ export default function OpsPanel({ token, stores, onOpenArticle }: Props) {
                       setNote('')
                       await refresh()
                     } catch (err) {
-                      setError(err instanceof Error ? err.message : '承認に失敗')
+                      setError(explainWorkflowError(err, '承認に失敗'))
                     } finally {
                       setBusy(false)
                     }
@@ -479,7 +479,7 @@ export default function OpsPanel({ token, stores, onOpenArticle }: Props) {
                       setMsg('差戻しました')
                       await refresh()
                     } catch (err) {
-                      setError(err instanceof Error ? err.message : '差戻しに失敗')
+                      setError(explainWorkflowError(err, '差戻しに失敗'))
                     } finally {
                       setBusy(false)
                     }
@@ -497,7 +497,7 @@ export default function OpsPanel({ token, stores, onOpenArticle }: Props) {
                       await approvalDecision(token, a.id, 'hold', note || undefined)
                       await refresh()
                     } catch (err) {
-                      setError(err instanceof Error ? err.message : '保留に失敗')
+                      setError(explainWorkflowError(err, '保留に失敗'))
                     } finally {
                       setBusy(false)
                     }

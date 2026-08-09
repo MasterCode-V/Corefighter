@@ -1,3 +1,5 @@
+import { explainWorkflowError } from './lib/format'
+
 const API = '/api/v1'
 
 export type PersonaBrief = {
@@ -144,11 +146,7 @@ async function parse<T>(res: Response): Promise<T> {
     } catch {
       /* nginx / proxy HTML error pages have no JSON detail */
     }
-    if (detail === 'Bad Request' || detail === '400') {
-      detail =
-        'リクエスト形式エラー（Bad Request）です。入力内容を確認するか、ページを再読み込みしてやり直してください。'
-    }
-    throw new Error(detail)
+    throw new Error(explainWorkflowError(detail, `エラー（HTTP ${res.status}）`))
   }
   if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
@@ -793,5 +791,5 @@ export async function pollJob(
     if (['COMPLETED', 'FAILED', 'CANCELLED'].includes(job.status)) return job
     await new Promise((r) => setTimeout(r, 1500))
   }
-  throw new Error('Job timed out')
+  throw new Error('処理がタイムアウトしました。時間をおいて再試行してください。')
 }

@@ -119,7 +119,7 @@ class OpenAIClient:
 
 def _parse_json(raw: Optional[str]) -> dict:
     if not raw:
-        raise ValueError("Empty response from OpenAI")
+        raise ValueError("OpenAIからの応答が空でした")
     try:
         return json.loads(raw)
     except json.JSONDecodeError:

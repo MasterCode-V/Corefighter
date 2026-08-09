@@ -84,16 +84,16 @@ async def related_posts(
     """
     article = await db.get(Article, article_id)
     if not article:
-        raise HTTPException(status_code=404, detail="Article not found")
+        raise HTTPException(status_code=404, detail="記事が見つかりません")
     ensure_store_access(current_user, article.store_id)
     if not article.wordpress_post_id:
         raise HTTPException(
             status_code=400,
-            detail="Article is not published to WordPress yet (no related posts available)",
+            detail="この記事はまだWordPressに公開されていないため、関連記事を取得できません",
         )
     site = await _resolve_site(db, article)
     if not site:
-        raise HTTPException(status_code=400, detail="No WordPress site configured for this store")
+        raise HTTPException(status_code=400, detail="この店舗にWordPress接続が設定されていません")
 
     client = WordPressClient(site.base_url, site.username, decrypt_secret(site.encrypted_app_password))
     try:
@@ -115,7 +115,7 @@ async def create_wordpress_draft(
     """
     article = await db.get(Article, article_id)
     if not article:
-        raise HTTPException(status_code=404, detail="Article not found")
+        raise HTTPException(status_code=404, detail="記事が見つかりません")
     if article.status not in (
         ArticleStatus.APPROVED,
         ArticleStatus.WORDPRESS_DRAFT,
@@ -123,11 +123,11 @@ async def create_wordpress_draft(
     ):
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot create WordPress draft from status {article.status.value}",
+            detail=f"現在の状態（{article.status.value}）からはWordPress下書きを作成できません",
         )
     site = await _resolve_site(db, article)
     if not site:
-        raise HTTPException(status_code=400, detail="No WordPress site configured for this store")
+        raise HTTPException(status_code=400, detail="この店舗にWordPress接続が設定されていません")
 
     job = await job_service.create_job(
         db, arq, job_type=JobType.WORDPRESS_DRAFT,
@@ -145,15 +145,15 @@ async def publish_article(
     """Workflow 13: verify preconditions then enqueue WORDPRESS_PUBLISH."""
     article = await db.get(Article, article_id)
     if not article:
-        raise HTTPException(status_code=404, detail="Article not found")
+        raise HTTPException(status_code=404, detail="記事が見つかりません")
 
     # Verify approval + existing WordPress draft + similarity result.
     if article.status not in (ArticleStatus.WORDPRESS_DRAFT, ArticleStatus.APPROVED):
-        raise HTTPException(status_code=400, detail="Article must be approved and have a WordPress draft")
+        raise HTTPException(status_code=400, detail="公開するには記事が承認済みで、WordPress下書きが必要です")
     if not article.wordpress_post_id:
-        raise HTTPException(status_code=400, detail="No WordPress draft exists yet")
+        raise HTTPException(status_code=400, detail="WordPress下書きがまだありません。先に下書き作成を実行してください")
     if not article.current_version_id:
-        raise HTTPException(status_code=400, detail="Article has no content")
+        raise HTTPException(status_code=400, detail="記事本文がありません")
 
     sim = await db.execute(
         select(SimilarityResult)
@@ -165,7 +165,7 @@ async def publish_article(
     if latest and not latest.passed:
         raise HTTPException(
             status_code=400,
-            detail="Latest similarity check did not pass; regenerate or override required",
+            detail="類似率チェックに不合格です。本文を再生成するか、類似警告を解除してから公開してください",
         )
 
     job = await job_service.create_job(
@@ -188,7 +188,7 @@ async def manual_retry(
     """Workflow 14: administrator manual retry after a WordPress failure."""
     article = await db.get(Article, article_id)
     if not article:
-        raise HTTPException(status_code=404, detail="Article not found")
+        raise HTTPException(status_code=404, detail="記事が見つかりません")
     job = await job_service.create_job(
         db, arq, job_type=job_type, article_id=article.id, created_by=current_user.id,
     )
@@ -208,7 +208,7 @@ async def sync_corpus(
     if wordpress_site_id:
         site = await db.get(WordPressSite, wordpress_site_id)
         if not site:
-            raise HTTPException(status_code=404, detail="WordPress site not found")
+            raise HTTPException(status_code=404, detail="WordPress接続設定が見つかりません")
     job = await job_service.create_job(
         db, arq, job_type=JobType.WORDPRESS_SYNC, created_by=current_user.id,
         payload={"wordpress_site_id": str(wordpress_site_id) if wordpress_site_id else None},

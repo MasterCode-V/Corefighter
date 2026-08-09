@@ -83,7 +83,7 @@ async def _get_purchase(db, purchase_id: uuid.UUID) -> Purchase:
     )
     purchase = result.scalar_one_or_none()
     if not purchase:
-        raise HTTPException(status_code=404, detail="Purchase not found")
+        raise HTTPException(status_code=404, detail="買取データが見つかりません")
     return purchase
 
 

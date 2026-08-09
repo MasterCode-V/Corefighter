@@ -49,7 +49,7 @@ async def _resolve_site(db, article: Article) -> WordPressSite:
         )
         site = result.scalar_one_or_none()
     if site is None:
-        raise ValueError("No active WordPress site configured for this store")
+        raise ValueError("この店舗に有効なWordPress接続がありません")
     return site
 
 
@@ -93,7 +93,7 @@ async def _upload_featured_image(db, article: Article, client: WordPressClient) 
     purchase = result.scalar_one_or_none()
     if not purchase or not purchase.images:
         raise ValueError(
-            "No purchase image found — featured image is required for EXPERIENCE listing"
+            "買取画像がありません。EXPERIENCE掲載にはアイキャッチ画像が必須です"
         )
     images = sorted(purchase.images, key=lambda i: (i.image_type != ImageType.ARTICLE, i.sort_order))
     main = images[0]
@@ -102,14 +102,14 @@ async def _upload_featured_image(db, article: Article, client: WordPressClient) 
         media = await client.upload_media(data, main.filename or "image.jpg", main.content_type)
     except Exception as exc:
         raise ValueError(
-            f"Featured image upload failed ({main.storage_key}): {exc}. "
-            "MinIO must be running and the image key must exist."
+            f"アイキャッチ画像のアップロードに失敗しました（{main.storage_key}）: {exc}。"
+            "MinIOが起動していること、画像キーが存在することを確認してください。"
         ) from exc
     main.wordpress_media_id = media["id"]
     await db.flush()
     source_url = media.get("source_url") or ""
     if not source_url:
-        raise ValueError("WordPress media upload returned no source_url")
+        raise ValueError("WordPressへの画像アップロードに失敗しました（URLが返りませんでした）")
 
     sizes = (media.get("media_details") or {}).get("sizes") or {}
     medium = sizes.get("medium") or {}
@@ -260,12 +260,12 @@ async def _build_payload(db, article: Article, version: ArticleVersion, client: 
 async def _load_article_version(db, job: Job) -> tuple[Article, ArticleVersion]:
     article = await db.get(Article, job.article_id)
     if article is None:
-        raise ValueError("Article not found")
+        raise ValueError("記事が見つかりません")
     if not article.current_version_id:
-        raise ValueError("Article has no current version")
+        raise ValueError("記事に現行バージョンがありません")
     version = await db.get(ArticleVersion, article.current_version_id)
     if version is None:
-        raise ValueError("Current version missing")
+        raise ValueError("記事バージョンが見つかりません")
     return article, version
 
 
@@ -298,7 +298,7 @@ async def handle_wordpress_draft(db, job: Job, ctx: dict | None = None) -> dict:
 async def handle_wordpress_update(db, job: Job, ctx: dict | None = None) -> dict:
     article, version = await _load_article_version(db, job)
     if not article.wordpress_post_id:
-        raise ValueError("No WordPress post to update")
+        raise ValueError("更新対象のWordPress投稿がありません")
     site = await _resolve_site(db, article)
     client = _client(site)
     payload = await _build_payload(db, article, version, client, status="draft")
@@ -313,7 +313,7 @@ async def handle_wordpress_update(db, job: Job, ctx: dict | None = None) -> dict
 async def handle_wordpress_publish(db, job: Job, ctx: dict | None = None) -> dict:
     article, version = await _load_article_version(db, job)
     if not article.wordpress_post_id:
-        raise ValueError("No WordPress draft to publish")
+        raise ValueError("公開するWordPress下書きがありません")
     site = await _resolve_site(db, article)
     client = _client(site)
 

@@ -40,7 +40,7 @@ def _main_image_url(purchase: Purchase) -> str | None:
 async def _generate(db, job: Job, ctx, *, regeneration: bool) -> dict:
     article = await db.get(Article, job.article_id)
     if article is None:
-        raise ValueError("Article not found")
+        raise ValueError("記事が見つかりません")
     result = await db.execute(
         select(Purchase)
         .options(selectinload(Purchase.images), selectinload(Purchase.products))
@@ -48,7 +48,7 @@ async def _generate(db, job: Job, ctx, *, regeneration: bool) -> dict:
     )
     purchase = result.scalar_one_or_none()
     if purchase is None:
-        raise ValueError("Purchase not found")
+        raise ValueError("買取データが見つかりません")
 
     if not regeneration:
         purchase.status = PurchaseStatus.GENERATION_RUNNING

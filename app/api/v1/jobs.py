@@ -47,7 +47,7 @@ async def get_job(db: DBSession, current_user: CurrentUser, job_id: uuid.UUID) -
     """Workflow: poll job status by id."""
     job = await db.get(Job, job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
     return job
 
 
@@ -57,9 +57,9 @@ async def retry_job(
 ) -> Job:
     job = await db.get(Job, job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
     if job.status not in (JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.PARTIALLY_COMPLETED):
-        raise HTTPException(status_code=400, detail="Only failed/cancelled jobs can be retried")
+        raise HTTPException(status_code=400, detail="失敗またはキャンセルされたジョブのみ再試行できます")
     return await job_service.retry_job(db, arq, job)
 
 
@@ -67,9 +67,9 @@ async def retry_job(
 async def cancel_job(db: DBSession, current_user: CurrentUser, job_id: uuid.UUID) -> Job:
     job = await db.get(Job, job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
     if job.status in (JobStatus.COMPLETED, JobStatus.FAILED):
-        raise HTTPException(status_code=400, detail="Job already finished")
+        raise HTTPException(status_code=400, detail="このジョブは既に完了しています")
     job.status = JobStatus.CANCELLED
     await db.commit()
     await db.refresh(job)

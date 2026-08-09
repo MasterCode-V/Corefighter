@@ -49,7 +49,7 @@ async def create_rule(db: DBSession, body: ContentRuleCreate) -> ContentRule:
 async def update_rule(db: DBSession, rule_id: uuid.UUID, body: ContentRuleUpdate) -> ContentRule:
     rule = await db.get(ContentRule, rule_id)
     if not rule:
-        raise HTTPException(status_code=404, detail="Rule not found")
+        raise HTTPException(status_code=404, detail="ルールが見つかりません")
     for key, value in body.model_dump(exclude_unset=True).items():
         setattr(rule, key, value)
     await db.commit()

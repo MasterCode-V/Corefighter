@@ -34,7 +34,7 @@ async def _get_article(db, article_id: uuid.UUID) -> Article:
     )
     article = result.scalar_one_or_none()
     if not article:
-        raise HTTPException(status_code=404, detail="Article not found")
+        raise HTTPException(status_code=404, detail="記事が見つかりません")
     return article
 
 
@@ -52,7 +52,7 @@ async def submit_for_approval(
     ensure_store_access(current_user, article.store_id)
     if article.status not in SUBMITTABLE:
         raise HTTPException(
-            status_code=400, detail=f"Article cannot be submitted from status {article.status.value}"
+            status_code=400, detail=f"現在の状態（{article.status.value}）からは承認申請できません"
         )
     article.status = ArticleStatus.WAITING_APPROVAL
     article.submitted_by = current_user.id
@@ -74,7 +74,7 @@ async def approval_decision(
     """Workflow 10: administrator approves / returns / holds / rejects."""
     article = await _get_article(db, article_id)
     if article.status != ArticleStatus.WAITING_APPROVAL:
-        raise HTTPException(status_code=400, detail="Article is not awaiting approval")
+        raise HTTPException(status_code=400, detail="この記事は承認待ちではありません")
 
     decision = body.decision.lower()
     article.reviewed_by = current_user.id
@@ -94,7 +94,7 @@ async def approval_decision(
     elif decision == "reject":
         article.status = ArticleStatus.REJECTED
     else:
-        raise HTTPException(status_code=400, detail="Invalid decision")
+        raise HTTPException(status_code=400, detail="不正な承認操作です")
 
     await db.commit()
     return await _reload_article(db, article_id)
