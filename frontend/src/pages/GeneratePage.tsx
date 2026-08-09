@@ -21,7 +21,7 @@ import {
   type Store,
   type User,
 } from '../api'
-import { todayIso } from '../lib/format'
+import { explainWorkflowError, todayIso } from '../lib/format'
 import { Banner, Stepper } from '../ui/Layout'
 import ArticleStep, { type ArticleEditState } from './generate/ArticleStep'
 import BasicStep, { type BasicForm } from './generate/BasicStep'
@@ -178,7 +178,7 @@ export default function GeneratePage({
         setMainImages(p.images.filter((i) => i.image_type === 'ARTICLE'))
         setStep(2)
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : '記事の読み込みに失敗しました')
+        if (!cancelled) setError(explainWorkflowError(err, '記事の読み込みに失敗しました'))
       } finally {
         if (!cancelled) {
           setBusy(false)
@@ -230,7 +230,7 @@ export default function GeneratePage({
       setProducts((prev) => rowsFromPurchase(fresh, prev))
       pushLog('画像を削除しました')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '画像の削除に失敗しました')
+      setError(explainWorkflowError(err, '画像の削除に失敗しました'))
     } finally {
       setBusy(false)
     }
@@ -253,9 +253,11 @@ export default function GeneratePage({
   /** Create/update the purchase and upload every image the user picked. */
   const syncPurchase = useCallback(
     async (): Promise<Purchase> => {
-      if (!storeId) throw new Error('掲載店舗を選択してください')
+      if (!storeId) throw new Error('保存できません。理由：掲載店舗が未選択です')
       if (areaIsManual(form.purchase_method) && !form.purchase_area.trim()) {
-        throw new Error('出張・宅配の場合は買取地区を入力してください（例：札幌市白石区）')
+        throw new Error(
+          '保存できません。理由：出張・宅配では買取地区が必要です（例：札幌市白石区）',
+        )
       }
       const payload = {
         persona_id: personaId || null,
@@ -304,7 +306,7 @@ export default function GeneratePage({
       await syncPurchase()
       setNotice('下書きを保存しました。あとから記事一覧の「編集」で再開できます。')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '下書き保存に失敗しました')
+      setError(explainWorkflowError(err, '下書き保存に失敗しました'))
     } finally {
       setBusy(false)
     }
@@ -315,11 +317,23 @@ export default function GeneratePage({
   async function runAnalyze() {
     setError('')
     setNotice('')
+    if (!storeId) {
+      setError('画像解析できません。理由：掲載店舗が未選択です。店舗を選んでから実行してください。')
+      return
+    }
+    if (areaIsManual(form.purchase_method) && !form.purchase_area.trim()) {
+      setError(
+        '画像解析できません。理由：出張・宅配では買取地区が必要です（例：札幌市白石区）。',
+      )
+      return
+    }
     const hasImages =
       mainFiles.length + mainImages.length > 0 ||
       products.some((p) => p.files.length + p.images.length > 0)
     if (!hasImages) {
-      setError('メイン画像または商品の詳細画像を1枚以上追加してください')
+      setError(
+        '画像解析できません。理由：解析する画像がありません。メイン画像または詳細画像を1枚以上追加してください。',
+      )
       return
     }
     setBusy(true)
@@ -332,7 +346,13 @@ export default function GeneratePage({
         setJobStatus(j.status)
         pushLog(`解析ジョブ: ${j.status}`)
       })
-      if (job.status !== 'COMPLETED') throw new Error(job.error || '画像解析に失敗しました')
+      if (job.status !== 'COMPLETED') {
+        throw new Error(
+          job.error
+            ? `画像解析に失敗しました。理由：${job.error}`
+            : '画像解析に失敗しました。理由：ジョブが完了しませんでした。',
+        )
+      }
       const analysed = await getPurchase(token, fresh.id)
       setPurchase(analysed)
       setProducts((prev) => rowsFromPurchase(analysed, prev))
@@ -340,7 +360,7 @@ export default function GeneratePage({
       pushLog('解析が完了しました')
       setStep(1)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '画像解析に失敗しました')
+      setError(explainWorkflowError(err, '画像解析に失敗しました'))
     } finally {
       setBusy(false)
       setJobStatus('')
@@ -351,7 +371,25 @@ export default function GeneratePage({
 
   async function runGenerate() {
     if (!purchase) {
-      setError('先に画像解析を実行してください')
+      setError(
+        '記事を生成できません。理由：買取データがまだありません。先に画像解析（または下書き保存）を実行してください。',
+      )
+      return
+    }
+    const missingNames = products
+      .map((p, i) => ({ i, name: p.product_name.trim() }))
+      .filter((p) => !p.name)
+    if (missingNames.length) {
+      const labels = missingNames.map((p) => `商品${p.i + 1}`).join('・')
+      setError(
+        `記事を生成できません。理由：${labels}の商品名が未入力です。画像から読み取れなかった場合は手入力してください。`,
+      )
+      return
+    }
+    if (areaIsManual(form.purchase_method) && !form.purchase_area.trim()) {
+      setError(
+        '記事を生成できません。理由：出張・宅配では買取地区が必要です（例：札幌市白石区）。',
+      )
       return
     }
     setError('')
@@ -378,7 +416,13 @@ export default function GeneratePage({
         setJobStatus(j.status)
         pushLog(`生成ジョブ: ${j.status}`)
       })
-      if (job.status !== 'COMPLETED') throw new Error(job.error || '記事生成に失敗しました')
+      if (job.status !== 'COMPLETED') {
+        throw new Error(
+          job.error
+            ? `記事生成に失敗しました。理由：${job.error}`
+            : '記事生成に失敗しました。理由：ジョブが完了しませんでした。',
+        )
+      }
 
       pushLog('記事と類似率チェックの完了を待っています…')
       let found: Article | null = null
@@ -393,11 +437,15 @@ export default function GeneratePage({
         }
         await new Promise((r) => setTimeout(r, 1500))
       }
-      if (!found) throw new Error('生成された記事が見つかりませんでした')
+      if (!found) {
+        throw new Error(
+          '記事生成に失敗しました。理由：生成ジョブは終わりましたが記事が見つかりませんでした。運用画面のジョブログを確認してください。',
+        )
+      }
       applyArticle(found)
       pushLog(`記事の準備が完了しました（${found.status}）`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '記事生成に失敗しました')
+      setError(explainWorkflowError(err, '記事生成に失敗しました'))
       setStep(1)
     } finally {
       setGenerating(false)
@@ -427,7 +475,7 @@ export default function GeneratePage({
       setNotice('記事を保存しました。')
       pushLog('記事を編集して新しいバージョンを作成しました')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '編集の保存に失敗しました')
+      setError(explainWorkflowError(err, '編集の保存に失敗しました'))
     } finally {
       setBusy(false)
     }
@@ -448,7 +496,7 @@ export default function GeneratePage({
       applyArticle(await getArticle(token, article.id))
       setNotice('記事を再生成しました。')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '再生成に失敗しました')
+      setError(explainWorkflowError(err, '再生成に失敗しました'))
     } finally {
       setGenerating(false)
       setBusy(false)
@@ -465,7 +513,7 @@ export default function GeneratePage({
       applyArticle(await getArticle(token, updated.id))
       setSubmitted(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '承認申請に失敗しました')
+      setError(explainWorkflowError(err, '承認申請に失敗しました'))
     } finally {
       setBusy(false)
     }

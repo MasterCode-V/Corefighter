@@ -1,7 +1,7 @@
 import type { PurchaseImage } from '../../api'
 import { proxyImageUrl } from '../../lib/format'
 import { CheckCircleIcon } from '../../ui/Icons'
-import { Field, PanelTitle, Section } from '../../ui/Layout'
+import { Banner, Field, PanelTitle, Section } from '../../ui/Layout'
 import {
   CONDITION_OPTIONS,
   TOPIC_OPTIONS,
@@ -33,6 +33,9 @@ export default function ReviewStep({
   onGenerate: () => void
 }) {
   const filled = products.filter((p) => p.manufacturer || p.product_name || p.model_number).length
+  const missingNameIndexes = products
+    .map((p, i) => (p.product_name.trim() ? null : i + 1))
+    .filter((n): n is number => n !== null)
 
   return (
     <>
@@ -43,6 +46,14 @@ export default function ReviewStep({
           double
           rule={false}
         />
+
+        {missingNameIndexes.length > 0 && (
+          <Banner kind="error">
+            記事をまだ生成できません。理由：商品
+            {missingNameIndexes.join('・')}
+            の商品名が空です。画像解析で取れなかった場合は手入力してください（画像のみでも、商品名があれば生成できます）。
+          </Banner>
+        )}
 
         <Section num={1} label="メイン画像">
           {mainImages.length ? (
@@ -206,7 +217,17 @@ export default function ReviewStep({
         >
           基本情報へ戻る
         </button>
-        <button type="button" className="cf-cta" onClick={onGenerate} disabled={busy}>
+        <button
+          type="button"
+          className="cf-cta"
+          onClick={onGenerate}
+          disabled={busy || missingNameIndexes.length > 0}
+          title={
+            missingNameIndexes.length
+              ? `商品名が未入力のため生成できません（商品${missingNameIndexes.join('・')}）`
+              : undefined
+          }
+        >
           <span className="cf-cta__gold" />
           <span className="cf-cta__body">{busy ? '生成中…' : 'この内容で記事を生成'}</span>
           <span className="cf-cta__red" />

@@ -66,7 +66,7 @@ async def create_purchase(
     if body.persona_id:
         persona = await db.get(Persona, body.persona_id)
         if not persona:
-            raise HTTPException(status_code=400, detail="Persona not found")
+            raise HTTPException(status_code=400, detail="選択した AI ペルソナが見つかりません")
     data = body.model_dump()
     products = data.pop("products", None)
     purchase = Purchase(created_by=current_user.id, **data)
@@ -142,10 +142,13 @@ async def upload_image(
     ensure_store_access(current_user, purchase.store_id)
 
     if file.content_type not in ALLOWED_CONTENT:
-        raise HTTPException(status_code=400, detail=f"Unsupported content type: {file.content_type}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"対応していない画像形式です（JPEG / PNG / WebP / GIF のみ）: {file.content_type}",
+        )
     data = await file.read()
     if len(data) > MAX_IMAGE_BYTES:
-        raise HTTPException(status_code=413, detail="Image too large (max 15MB)")
+        raise HTTPException(status_code=413, detail="画像サイズが大きすぎます（上限 15MB）")
 
     key = storage.build_key(f"purchases/{purchase_id}", file.filename or "image.jpg")
     url = await storage.upload_bytes(key, data, file.content_type)
@@ -193,7 +196,10 @@ async def analyze_images(
     purchase = await _get_purchase(db, purchase_id)
     ensure_store_access(current_user, purchase.store_id)
     if not purchase.images:
-        raise HTTPException(status_code=400, detail="No images uploaded for this purchase")
+        raise HTTPException(
+            status_code=400,
+            detail="画像解析できません。理由：アップロード済みの画像がありません",
+        )
 
     job = await job_service.create_job(
         db, arq, job_type=JobType.IMAGE_ANALYSIS,
@@ -220,7 +226,7 @@ async def generate_article(
     if not purchase.product_name:
         raise HTTPException(
             status_code=400,
-            detail="Product name is required before generating an article",
+            detail="記事を生成できません。理由：商品名が未入力です。画像解析結果を確認するか手入力してください",
         )
 
     # Ensure a single Article per purchase exists.

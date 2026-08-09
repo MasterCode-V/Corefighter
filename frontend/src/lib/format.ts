@@ -112,3 +112,44 @@ export function plainText(value: string | null | undefined): string {
     .replace(/\s+/g, ' ')
     .trim()
 }
+
+/** Map API / network errors to a Japanese reason the staff can act on. */
+export function explainWorkflowError(raw: unknown, fallback: string): string {
+  const message =
+    raw instanceof Error ? raw.message : typeof raw === 'string' ? raw : fallback
+  const text = (message || '').trim()
+  if (!text) return fallback
+
+  const rules: Array<[RegExp, string]> = [
+    [
+      /Product name is required/i,
+      '記事を生成できません。理由：商品名が未入力です。画像解析結果を確認するか、商品名を手入力してください。',
+    ],
+    [
+      /No images uploaded/i,
+      '画像解析できません。理由：アップロード済みの画像がありません。メイン画像または詳細画像を追加してください。',
+    ],
+    [
+      /Unsupported content type/i,
+      `画像をアップロードできません。理由：対応していない形式です（JPEG / PNG / WebP / GIF のみ）。${text.includes(':') ? `（${text.split(':').slice(1).join(':').trim()}）` : ''}`,
+    ],
+    [
+      /Image too large|413/i,
+      '画像をアップロードできません。理由：ファイルサイズが上限（15MB）を超えています。',
+    ],
+    [
+      /Persona not found/i,
+      '保存できません。理由：選択した AI ペルソナが見つかりません。別のペルソナを選んでください。',
+    ],
+    [
+      /Bad Request|リクエスト形式エラー/i,
+      '処理できませんでした。理由：リクエスト形式エラーです。ページを再読み込みしてから、画像と入力内容を確認してもう一度お試しください。',
+    ],
+    [/Failed to fetch|NetworkError|network/i, '通信に失敗しました。理由：サーバーに接続できません。回線と VPS の起動状態を確認してください。'],
+  ]
+
+  for (const [re, msg] of rules) {
+    if (re.test(text)) return msg
+  }
+  return text
+}
