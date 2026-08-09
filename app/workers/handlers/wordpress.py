@@ -77,10 +77,11 @@ def _render_content(version: ArticleVersion) -> str:
     return "\n".join(parts)
 
 
-async def _upload_featured_image(
-    db, article: Article, client: WordPressClient
-) -> tuple[int, str, Optional[str]]:
-    """Returns (wp_media_id, wp_source_url, local_url) for the main image.
+async def _upload_featured_image(db, article: Article, client: WordPressClient) -> dict:
+    """Upload the main purchase image and describe it for inline markup.
+
+    Returns ``{id, url, width, height, local_url}`` where ``url`` prefers the
+    ``medium`` size, matching manual EXPERIENCE posts.
 
     Featured image is required for the live EXPERIENCE / store grid. Missing
     MinIO media or WP upload failure must fail the job so we never publish a
@@ -109,27 +110,44 @@ async def _upload_featured_image(
     source_url = media.get("source_url") or ""
     if not source_url:
         raise ValueError("WordPress media upload returned no source_url")
-    return media["id"], source_url, main.url
+
+    sizes = (media.get("media_details") or {}).get("sizes") or {}
+    medium = sizes.get("medium") or {}
+    return {
+        "id": media["id"],
+        "url": medium.get("source_url") or source_url,
+        "width": medium.get("width"),
+        "height": medium.get("height"),
+        "size_class": "size-medium" if medium.get("source_url") else "size-full",
+        "local_url": main.url,
+    }
 
 
-def _inject_wp_featured_image(
-    content: str,
-    *,
-    local_url: Optional[str],
-    wp_url: Optional[str],
-    media_id: Optional[int],
-) -> str:
+def _inject_wp_featured_image(content: str, media: dict) -> str:
     """Rewrite the inline main image to match live EXPERIENCE markup.
 
-    Manual posts use ``<img class="wp-image-N … aligncenter" src="…wp-content…">``
-    (not a MinIO / figure wrapper). Prefer replacing our ``cf-main-image`` marker.
+    Manual posts use
+    ``<img src="…-512x640.jpg" alt="" width="512" height="640"
+    class="wp-image-N size-medium aligncenter" />`` — never a MinIO URL or a
+    ``<figure>`` wrapper. Prefer replacing our ``cf-main-image`` marker.
     """
+    wp_url = media.get("url")
+    media_id = media.get("id")
+    local_url = media.get("local_url")
     if not wp_url or not media_id:
         return content
 
+    alt_match = re.search(
+        r'<img\b[^>]*class="[^"]*cf-main-image[^"]*"[^>]*\balt="([^"]*)"', content, re.IGNORECASE
+    )
+    alt = alt_match.group(1) if alt_match else ""
+    dimensions = ""
+    if media.get("width") and media.get("height"):
+        dimensions = f' width="{media["width"]}" height="{media["height"]}"'
+
     wp_img = (
-        f'<img src="{wp_url}" alt="" '
-        f'class="wp-image-{media_id} size-full aligncenter" />'
+        f'<img src="{wp_url}" alt="{alt}"{dimensions} '
+        f'class="wp-image-{media_id} {media.get("size_class", "size-full")} aligncenter" />'
     )
     replaced, n = re.subn(
         r'<img\b[^>]*class="[^"]*cf-main-image[^"]*"[^>]*/?>',
@@ -169,14 +187,10 @@ async def _build_payload(db, article: Article, version: ArticleVersion, client: 
                          status: str) -> dict:
     from app.services import article_template
 
-    media_id, wp_url, local_url = await _upload_featured_image(db, article, client)
+    media = await _upload_featured_image(db, article, client)
+    media_id = media["id"]
 
-    content = _inject_wp_featured_image(
-        _render_content(version),
-        local_url=local_url,
-        wp_url=wp_url,
-        media_id=media_id,
-    )
+    content = _inject_wp_featured_image(_render_content(version), media)
 
     # Categories: always EXPERIENCE + any selected/suggested product categories
     # (multiple allowed, e.g. EXPERIENCE + 建材 + ペアコイル).
@@ -204,18 +218,20 @@ async def _build_payload(db, article: Article, version: ArticleVersion, client: 
     )
     if not cat_ids:
         cat_ids = [EXPERIENCE_CATEGORY_ID]
-    # Unknown AI suggestions: try resolve/create each token once.
+    # Never create new categories from AI suggestions: a brand-new term becomes
+    # the permalink base (e.g. /conditioner/123) and drops the post out of the
+    # /experience listing. Unknown names are logged and ignored.
     from app.services.wordpress_categories import split_category_names
 
-    for name in split_category_names(version.category_suggestion):
-        if category_id_for_name(name) is not None:
-            continue
-        try:
-            extra = await client.ensure_category(name)
-            if extra not in cat_ids:
-                cat_ids.append(extra)
-        except Exception:  # pragma: no cover
-            pass
+    unknown = [
+        name
+        for name in split_category_names(version.category_suggestion, purchase_category)
+        if category_id_for_name(name) is None
+    ]
+    if unknown:
+        logger.info(
+            "Ignoring unknown WordPress categories for article %s: %s", article.id, unknown
+        )
     payload["categories"] = cat_ids
 
     # Always attach store tag (+ makers) so the post appears under the store

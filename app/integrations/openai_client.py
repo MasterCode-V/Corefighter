@@ -48,7 +48,11 @@ class OpenAIClient:
             "(Japanese counter such as 点/台/本), characteristics (array of short strings). "
             "If several DISTINCT products are visible, return one array item per "
             "product. If only one product is visible, return a single-item array. "
-            "The top-level fields should describe the main/first product."
+            "The top-level fields should describe the main/first product.\n"
+            "product_name and category MUST be Japanese (the article title and "
+            "search keywords are Japanese): e.g. コンディショナー, 電動ドライバ, "
+            "VVFケーブル — never the English word printed on the package. "
+            "Keep manufacturer and model_number exactly as printed."
         )
         if hint:
             instruction += f"\nAdditional context from staff: {hint}"

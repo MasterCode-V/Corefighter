@@ -406,6 +406,8 @@ def build_buyersbox_user_prompt(
         "（例: 建材、ペアコイル / 工具、中古電動工具）。"
         "購入・解析で指定されたカテゴリーがあればそれを優先。"
         "EXPERIENCE / NEWS は選ばない（システム側で EXPERIENCE を自動付与する）。"
+        "リストに無い名称は絶対に出力しない（新規カテゴリーは作成されず無視される）。"
+        "該当が無ければ最も近いものを1つだけ選ぶ。"
     )
 
     lines.append("\n" + BUYERSBOX_JSON_SCHEMA)

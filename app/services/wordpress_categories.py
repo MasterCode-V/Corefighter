@@ -97,8 +97,14 @@ def resolve_category_ids(
         ids.append(EXPERIENCE_CATEGORY_ID)
     for name in split_category_names(*names):
         cid = category_id_for_name(name)
-        if cid is not None and cid not in ids:
-            ids.append(cid)
+        if cid is None or cid in ids:
+            continue
+        # WordPress builds %category% permalinks from the lowest term id, so a
+        # category below EXPERIENCE (e.g. その他 = 1) would move the post off
+        # /experience/ and out of the live listing.
+        if include_experience and cid < EXPERIENCE_CATEGORY_ID:
+            continue
+        ids.append(cid)
     return ids
 
 

@@ -38,10 +38,12 @@ DEFAULT_TEMPLATE: dict = {
     "persona_intro": "こんにちは～🙋‍♀️パワトレギャルです💕",
     "many_threshold": 10,              # qty >= this => omit model number in title
     "phone_general": "011-827-1149",
-    "phone_dispatch": "050-3479-0800",
+    "phone_dispatch": "050-1809-4396",
     "line_url": "https://lin.ee/WnXr1bu",
-    # Footer HTML matches live EXPERIENCE dial block (green labels + LINE link),
-    # then the shared VVF / SNS / store boilerplate. {phone_*} / {line_url} filled in.
+    # Footer = the dial / LINE block only, byte-for-byte like manual EXPERIENCE
+    # posts. The 買取価格 tables, SNS block, store info and maps below an article
+    # are rendered by the theme for /experience/ posts — putting them in the
+    # content produces empty duplicate headings.
     "footer_html": (
         '<p style="text-align: left;">'
         '<span style="color: #008000;"><strong>出張買取専用ダイヤル</strong></span>'
@@ -49,19 +51,7 @@ DEFAULT_TEMPLATE: dict = {
         '<span style="color: #008000;"><strong>パワフルトレードセンター総合ダイヤル</strong></span><br />\n'
         '最短1分カンタン査定はこちら： <b>{phone_general}</b><br />\n'
         'LINE査定もご利用ください。<br />\n'
-        'LINE査定は<a href="{line_url}">こちら</a>から</p>\n'
-        '<h3>年間買取10000件　パワトレ買取実績</h3>\n'
-        '<h5>【札幌市内No.1】最新のVVF電線買取価格</h5>\n'
-        '<h5>【札幌市内No.1】最新のペアコイル買取価格</h5>\n'
-        '<h5>SNS情報発信&amp;査定依頼受付中</h5>\n'
-        '<p>無料査定はLINE、インスタのDM、電話から受け付けております😎<br />\n'
-        '☎︎：{phone_general}</p>\n'
-        '<h4>パワフルトレードセンター 東苗穂店</h4>\n'
-        '<p>〒007-0803 北海道札幌市東区東苗穂3条1丁目3-45 コスモロイヤル東苗穂A棟 1F 定休日：日曜・祝日</p>\n'
-        '<h4>パワフルトレードセンター 豊平店</h4>\n'
-        '<p>〒062-0903 北海道札幌市豊平区豊平3条9丁目3-10 エムズ豊平１F 定休日：日曜・祝日</p>\n'
-        '<h4>パワフルトレードセンター 東米里店</h4>\n'
-        '<p>〒003-0876 北海道札幌市白石区東米里2090-170 定休日：日曜・祝日</p>'
+        'LINE査定は<a href="{line_url}">こちら</a>から</p>'
     ),
 }
 
@@ -203,12 +193,12 @@ def build_excerpt(cfg: dict, purchase: Purchase, *, ai_excerpt: Optional[str] = 
     return f"{area}で{focus}の買取ならパワトレ{store}へ。出張買取・大量買取もご相談ください。"[:120]
 
 
-def _image_html(main_image_url: Optional[str]) -> str:
+def _image_html(main_image_url: Optional[str], alt: str = "") -> str:
     if not main_image_url:
         return ""
     # Class ``cf-main-image`` is a marker rewritten to wp-image-N on WP upload.
     return (
-        f'<img class="cf-main-image aligncenter" src="{main_image_url}" alt="" />'
+        f'<img class="cf-main-image aligncenter" src="{main_image_url}" alt="{alt}" />'
     )
 
 
@@ -220,27 +210,27 @@ def assemble_html(
     main_image_url: Optional[str] = None,
     product_line: Optional[str] = None,
 ) -> str:
-    """Wrap the AI body with the fixed header + footer to produce the final HTML."""
+    """Wrap the AI body with the fixed header + footer to produce the final HTML.
+
+    Structure mirrors manual EXPERIENCE posts: centered H2, centered red thanks,
+    centered main image, body, dial/LINE footer. Manual posts carry no centered
+    product subtitle, so ``product_line`` is only used as the image alt text.
+    """
     color = cfg.get("thanks_color") or "#ff0000"
     thanks = (
         f'<p style="text-align: center;">'
         f'<strong><span style="color: {color};">{cfg["thanks_text"]}</span></strong></p>'
     )
-    product_html = ""
-    if product_line:
-        product_html = (
-            f'<p style="text-align: center;"><strong>{product_line}</strong></p>'
-        )
     footer = cfg["footer_html"].format(
         phone_general=cfg.get("phone_general", ""),
         phone_dispatch=cfg.get("phone_dispatch", ""),
         line_url=cfg.get("line_url", "https://lin.ee/WnXr1bu"),
     )
+    alt = f"{product_line}買取" if product_line else ""
     parts = [
         f'<h2 style="text-align: center;">{heading}</h2>',
         thanks,
-        product_html,
-        _image_html(main_image_url),
+        _image_html(main_image_url, alt),
         (ai_body_html or "").strip(),
         footer,
     ]
