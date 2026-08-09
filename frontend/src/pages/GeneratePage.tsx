@@ -315,16 +315,11 @@ export default function GeneratePage({
   async function runAnalyze() {
     setError('')
     setNotice('')
-    const hasMain = mainFiles.length + mainImages.length > 0
-    const missingDetail = products.some((p) => p.files.length + p.images.length === 0)
-    if (!hasMain && missingDetail) {
+    const hasImages =
+      mainFiles.length + mainImages.length > 0 ||
+      products.some((p) => p.files.length + p.images.length > 0)
+    if (!hasImages) {
       setError('メイン画像または商品の詳細画像を1枚以上追加してください')
-      return
-    }
-    if (missingDetail) {
-      setError(
-        '商品ブロックに詳細画像（ラベル・型番の接写）を追加してください。メイン画像だけでは商品情報を抽出できません。',
-      )
       return
     }
     setBusy(true)

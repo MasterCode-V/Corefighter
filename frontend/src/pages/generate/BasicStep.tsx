@@ -183,8 +183,8 @@ export default function BasicStep({
               <div className="cf-product" key={product.key}>
                 <div className="cf-product__head">
                   <span className="cf-product__name">商品 {index + 1}</span>
-                  <span className={`cf-badge ${linked ? 'cf-badge--green' : 'cf-badge--amber'}`}>
-                    詳細画像 {linked ? `${linked}枚` : '必須'}
+                  <span className={`cf-badge ${linked ? 'cf-badge--green' : 'cf-badge--gray'}`}>
+                    詳細画像 {linked ? `${linked}枚` : '任意'}
                   </span>
                   <span className="cf-section__spacer" />
                   <span className="cf-product__link">
