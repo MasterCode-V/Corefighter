@@ -20,7 +20,37 @@ router = APIRouter()
 
 ArqDep = Annotated[ArqRedis, Depends(get_arq)]
 MAX_IMAGE_BYTES = 15 * 1024 * 1024
-ALLOWED_CONTENT = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+ALLOWED_CONTENT = {
+    "image/jpeg",
+    "image/jpg",
+    "image/pjpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "application/octet-stream",
+    "",
+}
+
+
+def _sniff_image_content_type(data: bytes, declared: str | None) -> str:
+    """Prefer magic bytes so empty / octet-stream uploads from phones still work."""
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    declared = (declared or "").split(";")[0].strip().lower()
+    if declared in {"image/jpeg", "image/jpg", "image/pjpeg"}:
+        return "image/jpeg"
+    if declared in {"image/png", "image/webp", "image/gif"}:
+        return declared
+    raise HTTPException(
+        status_code=400,
+        detail="対応していない画像形式です。JPEG / PNG / WebP / GIF を選んでください（商品名などが空でも解析はできます）。",
+    )
 
 
 def _apply_products(purchase: Purchase, products: Optional[List[dict]]) -> None:
@@ -141,7 +171,8 @@ async def upload_image(
     purchase = await _get_purchase(db, purchase_id)
     ensure_store_access(current_user, purchase.store_id)
 
-    if file.content_type not in ALLOWED_CONTENT:
+    declared = (file.content_type or "").split(";")[0].strip().lower()
+    if declared and declared not in ALLOWED_CONTENT and not declared.startswith("image/"):
         raise HTTPException(
             status_code=400,
             detail=f"対応していない画像形式です（JPEG / PNG / WebP / GIF のみ）: {file.content_type}",
@@ -149,9 +180,10 @@ async def upload_image(
     data = await file.read()
     if len(data) > MAX_IMAGE_BYTES:
         raise HTTPException(status_code=413, detail="画像サイズが大きすぎます（上限 15MB）")
+    content_type = _sniff_image_content_type(data, declared)
 
     key = storage.build_key(f"purchases/{purchase_id}", file.filename or "image.jpg")
-    url = await storage.upload_bytes(key, data, file.content_type)
+    url = await storage.upload_bytes(key, data, content_type)
 
     image = PurchaseImage(
         purchase_id=purchase_id,
@@ -159,7 +191,7 @@ async def upload_image(
         storage_key=key,
         url=url,
         filename=file.filename or "",
-        content_type=file.content_type or "",
+        content_type=content_type,
         size=len(data),
         sort_order=sort_order,
         product_index=product_index if image_type == ImageType.DETAIL else None,

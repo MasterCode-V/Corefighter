@@ -322,12 +322,21 @@ export async function uploadImage(
   sortOrder = 0,
   productIndex?: number,
 ) {
+  // Some browsers send empty / octet-stream types; give the file a sane name+type.
+  const safeName = file.name?.includes('.')
+    ? file.name
+    : `${file.name || 'image'}.jpg`
+  const safeFile =
+    file.type && file.type !== 'application/octet-stream'
+      ? file
+      : new File([file], safeName, { type: file.type || 'image/jpeg' })
+
   // Retry: nginx keep-alive desync occasionally returns a body-less 400
   // right after createPurchase; a fresh connection usually succeeds.
   let lastError: unknown
   for (let attempt = 1; attempt <= 3; attempt++) {
     const form = new FormData()
-    form.append('file', file)
+    form.append('file', safeFile)
     form.append('image_type', imageType)
     form.append('sort_order', String(sortOrder))
     if (productIndex !== undefined) form.append('product_index', String(productIndex))
@@ -339,14 +348,14 @@ export async function uploadImage(
       })
       if (!res.ok && res.status === 400 && attempt < 3) {
         await res.text().catch(() => undefined)
-        await new Promise((r) => setTimeout(r, 250 * attempt))
+        await new Promise((r) => setTimeout(r, 300 * attempt))
         continue
       }
       return parse<PurchaseImage>(res)
     } catch (err) {
       lastError = err
       if (attempt >= 3) break
-      await new Promise((r) => setTimeout(r, 250 * attempt))
+      await new Promise((r) => setTimeout(r, 300 * attempt))
     }
   }
   throw lastError instanceof Error ? lastError : new Error('画像のアップロードに失敗しました')
@@ -361,11 +370,28 @@ export async function deletePurchaseImage(token: string, purchaseId: string, ima
 }
 
 export async function analyzeImages(token: string, purchaseId: string) {
-  const res = await fetch(`${API}/purchases/${purchaseId}/analyze`, {
-    method: 'POST',
-    headers: authHeaders(token),
-  })
-  return parse<{ job_id: string; job_type: string; status: string }>(res)
+  let lastError: unknown
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(`${API}/purchases/${purchaseId}/analyze`, {
+        method: 'POST',
+        headers: authHeaders(token),
+      })
+      if (!res.ok && res.status === 400 && attempt < 3) {
+        await res.text().catch(() => undefined)
+        await new Promise((r) => setTimeout(r, 250 * attempt))
+        continue
+      }
+      return parse<{ job_id: string; job_type: string; status: string }>(res)
+    } catch (err) {
+      lastError = err
+      if (attempt >= 3) break
+      await new Promise((r) => setTimeout(r, 250 * attempt))
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('画像解析の開始に失敗しました')
 }
 
 export async function generateArticle(

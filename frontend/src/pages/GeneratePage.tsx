@@ -254,7 +254,11 @@ export default function GeneratePage({
   const syncPurchase = useCallback(
     async (): Promise<Purchase> => {
       if (!storeId) throw new Error('保存できません。理由：掲載店舗が未選択です')
-      // Product fields may be empty — AI fills them after image analysis.
+      // Product name/maker/model may be empty — AI fills them after analysis.
+      const productRows = productsPayload()
+      const hasProductData = productRows.some(
+        (p) => p.manufacturer || p.product_name || p.model_number || p.condition,
+      )
       const area =
         form.purchase_area.trim() || (areaIsManual(form.purchase_method) ? '' : '—')
       const payload = {
@@ -262,16 +266,20 @@ export default function GeneratePage({
         purchase_date: form.purchase_date || undefined,
         purchase_method: form.purchase_method || undefined,
         purchase_area: area || undefined,
-        products: productsPayload(),
+        ...(hasProductData ? { products: productRows } : {}),
       }
 
       let current = purchase
       if (current) {
-        current = await updatePurchase(token, current.id, payload)
+        current = await updatePurchase(token, current.id, {
+          ...payload,
+          ...(hasProductData ? { products: productRows } : {}),
+        })
       } else {
         current = await createPurchase(token, { store_id: storeId, ...payload })
         pushLog(`買取データ ${current.id.slice(0, 8)}… を作成しました`)
-        await new Promise((r) => setTimeout(r, 150))
+        // Let the create response finish closing the socket before multipart upload.
+        await new Promise((r) => setTimeout(r, 300))
       }
 
       let order = current.images.length
@@ -325,7 +333,7 @@ export default function GeneratePage({
       products.some((p) => p.files.length + p.images.length > 0)
     if (!hasImages) {
       setError(
-        '画像解析できません。理由：解析する画像がありません。メイン画像または詳細画像を1枚以上追加してください。',
+        '画像解析できません。理由：解析する画像がありません。メイン画像を1枚追加してください（メーカー・商品名は空のままで大丈夫です）。',
       )
       return
     }

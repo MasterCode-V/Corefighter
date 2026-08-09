@@ -220,6 +220,9 @@ export default function BasicStep({
                   />
                   <div className="cf-product__right">
                     <h4>抽出される商品情報</h4>
+                    <p className="cf-section__note" style={{ margin: '0 0 10px' }}>
+                      空のままでOKです。画像解析後に自動入力されます（手入力もできます）。
+                    </p>
                     <div className="cf-inline-field">
                       <label htmlFor={`mk-${product.key}`}>メーカー</label>
                       <input
