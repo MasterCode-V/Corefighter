@@ -194,7 +194,12 @@ async def _build_payload(db, article: Article, version: ArticleVersion, client: 
 
     # Categories: always EXPERIENCE + any selected/suggested product categories
     # (multiple allowed, e.g. EXPERIENCE + 建材 + ペアコイル).
-    purchase = await db.get(Purchase, article.purchase_id)
+    result = await db.execute(
+        select(Purchase)
+        .options(selectinload(Purchase.products), selectinload(Purchase.images))
+        .where(Purchase.id == article.purchase_id)
+    )
+    purchase = result.scalar_one_or_none()
     store = await db.get(Store, article.store_id) if article.store_id else None
     cfg = article_template.resolve_config(store)
     purchase_category = getattr(purchase, "category", None) if purchase else None
