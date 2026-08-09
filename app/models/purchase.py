@@ -118,6 +118,9 @@ class PurchaseImage(UUIDMixin, TimestampMixin, Base):
     content_type: Mapped[str] = mapped_column(String(128), default="")
     size: Mapped[int] = mapped_column(Integer, default=0)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    # DETAIL images are grouped per product block (0-based). NULL = ungrouped
+    # (legacy uploads and every ARTICLE / eye-catch image).
+    product_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # Set once uploaded to WordPress media library.
     wordpress_media_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 

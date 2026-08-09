@@ -1,14 +1,31 @@
 from __future__ import annotations
 
 import uuid
-from typing import Optional
+from typing import List, Optional
 
-from sqlalchemy import Boolean, Enum as SAEnum, ForeignKey, String
+from sqlalchemy import Boolean, Column, Enum as SAEnum, ForeignKey, String, Table
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.enums import UserRole
 from app.models.base import Base, TimestampMixin, UUIDMixin
+
+user_personas = Table(
+    "user_personas",
+    Base.metadata,
+    Column(
+        "user_id",
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "persona_id",
+        PG_UUID(as_uuid=True),
+        ForeignKey("personas.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
 
 
 class User(UUIDMixin, TimestampMixin, Base):
@@ -27,3 +44,8 @@ class User(UUIDMixin, TimestampMixin, Base):
         PG_UUID(as_uuid=True), ForeignKey("stores.id", ondelete="SET NULL"), nullable=True
     )
     store: Mapped[Optional["Store"]] = relationship(back_populates="users")  # noqa: F821
+
+    # Personas this account may write with. Empty list = every active persona.
+    allowed_personas: Mapped[List["Persona"]] = relationship(  # noqa: F821
+        secondary=user_personas, lazy="selectin"
+    )

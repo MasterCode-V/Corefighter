@@ -1,1415 +1,174 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
-  analyzeImages,
-  createPurchase,
-  editArticle,
-  generateArticle,
-  getArticle,
-  getArticleTemplate,
-  getPurchase,
-  getRelatedPosts,
-  listArticles,
   listPersonas,
   listStores,
   listWordpressCategories,
-  login,
+  login as apiLogin,
   me,
-  pollJob,
-  submitForApproval,
-  updateArticleTemplate,
-  updatePurchase,
-  uploadImage,
+  type Persona,
+  type Store,
+  type User,
 } from './api'
-import type { Article, Persona, Product, Purchase, RelatedPost, Store, User } from './api'
+import { useRoute } from './lib/router'
+import { roleLabel } from './lib/format'
+import AdminPage from './pages/AdminPage'
+import ArticleListPage from './pages/ArticleListPage'
+import GeneratePage from './pages/GeneratePage'
+import LoginPage from './pages/LoginPage'
 import OpsPanel from './OpsPanel'
-
-function toProxy(html: string) {
-  return html.replace(
-    /https?:\/\/(?:localhost|127\.0\.0\.1):9000\/corefighter-media\//g,
-    '/api/v1/media/',
-  )
-}
-
-type Step = 'input' | 'analyze' | 'generate' | 'done'
+import { AppHeader, BackBar, Banner, TabBar } from './ui/Layout'
 
 const TOKEN_KEY = 'cf_token'
-
-function pillClass(status: string) {
-  if (['COMPLETED', 'ANALYZED', 'ARTICLE_READY', 'WAITING_LIST', 'PUBLISHED'].includes(status))
-    return 'pill ok'
-  if (['FAILED', 'WORDPRESS_ERROR', 'NEEDS_CORRECTION'].includes(status)) return 'pill err'
-  if (status.includes('RUNNING') || status.includes('QUEUED') || status === 'RETRYING')
-    return 'pill warn'
-  return 'pill'
-}
-
-function imageTypeLabel(type: 'ARTICLE' | 'DETAIL') {
-  return type === 'ARTICLE' ? '記事画像' : '詳細画像'
-}
-
-function todayIso() {
-  const d = new Date()
-  const off = d.getTimezoneOffset()
-  return new Date(d.getTime() - off * 60000).toISOString().slice(0, 10)
-}
-
-function splitCats(value?: string | null) {
-  return (value || '')
-    .split(/[,、/|；;]+/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-}
-
-function joinCats(names: string[]) {
-  return names.join('、')
-}
-
-/** 記事への追加指示（チェックで選べるネタ） */
-const TOPIC_OPTIONS = [
-  {
-    id: 'jichi',
-    label: '昨今の自治ネタ',
-    prompt:
-      '本文のどこかで、札幌近辺の自治体・地域の身近な話題に軽く触れる（政治的な断定や批判は避け、親しみやすい雑談程度）。',
-  },
-  {
-    id: 'kensetsu',
-    label: '建築業界ネタ',
-    prompt:
-      '建築・建設業界の現場あるあるや業界ネタを1〜2文、自然に織り交ぜる（専門用語の羅列は避け、読者が楽しめる軽いトーン）。',
-  },
-  {
-    id: 'tenki',
-    label: '本日の天気',
-    prompt:
-      '本日の天気や季節感に軽く触れる。正確な予報データは無いので、季節・気温・空模様の雰囲気で自然に書く（断定しすぎない）。',
-  },
-  {
-    id: 'lunch',
-    label: '昼食メニュー（ランダム）',
-    prompt:
-      '昼食メニューをランダムに1つ挙げて、軽く雑談する（例：ラーメン、カレー、定食など）。商品紹介の邪魔にならない短さで。',
-  },
-  {
-    id: 'yasumi',
-    label: '明日休み（前日）',
-    prompt:
-      '「明日は休み」という前日の気分・現場の空気感に軽く触れる（休み明けの話題ではなく、前日としての雑談）。',
-  },
-  {
-    id: 'dekigoto',
-    label: '最近の出来事（雑談）',
-    prompt:
-      '最近のちょっとした出来事や日常雑談を1つ入れる。事実の捏造が過ぎないよう、一般的で無害なエピソードにする。',
-  },
-  {
-    id: 'kenzai',
-    label: '買い取った商品についての情報（どのように使われる建材か）',
-    prompt:
-      '買い取った商品が実際にどのように使われる建材・資材・道具か、用途や現場での使われ方をわかりやすく1〜2文で説明する（スペック羅列は禁止）。',
-  },
-] as const
-
-type TopicId = (typeof TOPIC_OPTIONS)[number]['id']
-
-// 店頭のときは買取地区を手入力せず「—」固定。出張・宅配は手入力。
-function areaIsManual(method: string) {
-  return method === '出張' || method === '宅配'
-}
-
-type ProductRow = {
-  manufacturer: string
-  product_name: string
-  model_number: string
-  condition: string
-  quantity: string
-  quantity_unit: string
-}
-
-function emptyProduct(): ProductRow {
-  return {
-    manufacturer: '',
-    product_name: '',
-    model_number: '',
-    condition: '',
-    quantity: '1',
-    quantity_unit: '点',
-  }
-}
-
-function productsFromPurchase(p: Purchase): ProductRow[] {
-  const rows = p.products && p.products.length ? p.products : null
-  if (rows) {
-    return rows.map((x) => ({
-      manufacturer: x.manufacturer || '',
-      product_name: x.product_name || '',
-      model_number: x.model_number || '',
-      condition: x.condition || '',
-      quantity: String(x.quantity ?? 1),
-      quantity_unit: x.quantity_unit || '点',
-    }))
-  }
-  return [
-    {
-      manufacturer: p.manufacturer || '',
-      product_name: p.product_name || '',
-      model_number: p.model_number || '',
-      condition: p.condition || '',
-      quantity: String(p.quantity ?? 1),
-      quantity_unit: p.quantity_unit || '点',
-    },
-  ]
-}
 
 export default function App() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY))
   const [user, setUser] = useState<User | null>(null)
-  const [email, setEmail] = useState('admin@corefighter.local')
-  const [password, setPassword] = useState('admin12345')
   const [stores, setStores] = useState<Store[]>([])
-  const [wpCategories, setWpCategories] = useState<Array<{ id: number; name: string }>>([])
   const [personas, setPersonas] = useState<Persona[]>([])
-  const [storeId, setStoreId] = useState('')
-  const [personaId, setPersonaId] = useState('')
-  const [articleFiles, setArticleFiles] = useState<File[]>([])
-  const [detailFiles, setDetailFiles] = useState<File[]>([])
-  const [dragOver, setDragOver] = useState(false)
-  const [form, setForm] = useState({
-    purchase_date: todayIso(),
-    purchase_method: '店頭',
-    purchase_area: '—',
-    category: '',
-    characteristics: '',
-    manual_notes: '',
-    user_instructions: '',
-  })
-  const [topicFlags, setTopicFlags] = useState<Record<TopicId, boolean>>(() =>
-    Object.fromEntries(TOPIC_OPTIONS.map((t) => [t.id, false])) as Record<TopicId, boolean>,
-  )
-  const [products, setProducts] = useState<ProductRow[]>([emptyProduct()])
-  const [purchase, setPurchase] = useState<Purchase | null>(null)
-  const [article, setArticle] = useState<Article | null>(null)
-  const [jobStatus, setJobStatus] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const [step, setStep] = useState<Step>('input')
-  const [uiMode, setUiMode] = useState<'generate' | 'ops'>('generate')
-  const [log, setLog] = useState<string[]>([])
-  const [editing, setEditing] = useState(false)
-  const [advanced, setAdvanced] = useState(false)
-  const [related, setRelated] = useState<RelatedPost[] | null>(null)
-  const [relatedMsg, setRelatedMsg] = useState('')
-  const [edit, setEdit] = useState({
-    title: '',
-    body: '',
-    rendered_html: '',
-    excerpt: '',
-    tags: '',
-    category_suggestion: '',
-  })
-  const [tplOpen, setTplOpen] = useState(false)
-  const [tpl, setTpl] = useState({
-    thanks_text: '',
-    phone_general: '',
-    phone_dispatch: '',
-    footer_html: '',
-  })
+  const [wpCategories, setWpCategories] = useState<Array<{ id: number; name: string }>>([])
+  const [bootError, setBootError] = useState('')
+  const [route, navigate] = useRoute()
 
-  function updateProduct(idx: number, patch: Partial<ProductRow>) {
-    setProducts((prev) => prev.map((p, i) => (i === idx ? { ...p, ...patch } : p)))
-  }
-  function addProduct() {
-    setProducts((prev) => [...prev, emptyProduct()])
-  }
-  function removeProduct(idx: number) {
-    setProducts((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx)))
-  }
-
-  const previews = useMemo(() => {
-    const all = [
-      ...articleFiles.map((f) => ({ file: f, type: 'ARTICLE' as const })),
-      ...detailFiles.map((f) => ({ file: f, type: 'DETAIL' as const })),
-    ]
-    return all.map((item) => ({
-      ...item,
-      url: URL.createObjectURL(item.file),
-    }))
-  }, [articleFiles, detailFiles])
-
-  useEffect(() => {
-    return () => previews.forEach((p) => URL.revokeObjectURL(p.url))
-  }, [previews])
+  const loadPersonas = useCallback(async () => {
+    if (!token) return
+    try {
+      setPersonas(await listPersonas(token))
+    } catch {
+      /* non fatal */
+    }
+  }, [token])
 
   useEffect(() => {
     if (!token) return
+    let cancelled = false
     ;(async () => {
       try {
-        const u = await me(token)
-        setUser(u)
+        const current = await me(token)
+        if (cancelled) return
+        setUser(current)
         const [s, p, cats] = await Promise.all([
           listStores(token),
           listPersonas(token),
           listWordpressCategories(token, true).catch(() => []),
         ])
+        if (cancelled) return
         setStores(s)
         setPersonas(p)
         setWpCategories(cats)
-        if (s[0]) setStoreId(u.store_id || s[0].id)
-        if (p[0]) setPersonaId(p[0].id)
-      } catch (e) {
+      } catch (err) {
+        if (cancelled) return
         localStorage.removeItem(TOKEN_KEY)
         setToken(null)
-        setError(e instanceof Error ? e.message : 'セッションの有効期限が切れました')
+        setUser(null)
+        setBootError(err instanceof Error ? err.message : 'セッションの有効期限が切れました')
       }
     })()
+    return () => {
+      cancelled = true
+    }
   }, [token])
 
-  function pushLog(msg: string) {
-    setLog((prev) => [`${new Date().toLocaleTimeString()}  ${msg}`, ...prev].slice(0, 40))
-  }
-
-  function productsPayload(): Product[] {
-    return products
-      .map((p, i) => ({
-        sort_order: i,
-        manufacturer: p.manufacturer.trim() || undefined,
-        product_name: p.product_name.trim() || undefined,
-        model_number: p.model_number.trim() || undefined,
-        condition: p.condition.trim() || undefined,
-        quantity: Number(p.quantity) > 0 ? Number(p.quantity) : 1,
-        quantity_unit: p.quantity_unit.trim() || '点',
-      }))
-      .filter((p) => p.manufacturer || p.product_name || p.model_number)
-  }
-
-  function formPayload() {
-    const text = Object.fromEntries(
-      Object.entries(form).map(([k, v]) => [k, v.trim() || undefined]),
-    )
-    const prods = productsPayload()
-    return { ...text, products: prods.length ? prods : undefined }
-  }
-
-  function toggleTopic(id: TopicId) {
-    setTopicFlags((prev) => ({ ...prev, [id]: !prev[id] }))
-  }
-
-  function buildUserInstructions(): string | undefined {
-    const selected = TOPIC_OPTIONS.filter((t) => topicFlags[t.id])
-    const parts: string[] = []
-    if (selected.length) {
-      parts.push('【本文に織り交ぜる追加ネタ（チェック済み）】')
-      selected.forEach((t, i) => {
-        parts.push(`${i + 1}. ${t.label}: ${t.prompt}`)
-      })
-      parts.push(
-        '上記ネタはすべて本文に自然に含めること。ただし電話番号・フッター・価格は書かない。商品事実の捏造は禁止。',
-      )
-    }
-    const free = form.user_instructions.trim()
-    if (free) {
-      parts.push('【スタッフ自由記入】')
-      parts.push(free)
-    }
-    return parts.length ? parts.join('\n') : undefined
-  }
-
-  async function onLogin(e: FormEvent) {
-    e.preventDefault()
-    setError('')
-    setBusy(true)
-    try {
-      const t = await login(email, password)
-      localStorage.setItem(TOKEN_KEY, t.access_token)
-      setToken(t.access_token)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'ログインに失敗しました')
-    } finally {
-      setBusy(false)
-    }
+  async function handleLogin(email: string, password: string) {
+    const result = await apiLogin(email, password)
+    localStorage.setItem(TOKEN_KEY, result.access_token)
+    setBootError('')
+    setToken(result.access_token)
   }
 
   function logout() {
     localStorage.removeItem(TOKEN_KEY)
     setToken(null)
     setUser(null)
-    setPurchase(null)
-    setArticle(null)
-    setStep('input')
-  }
-
-  function onPickFiles(files: FileList | null, kind: 'ARTICLE' | 'DETAIL') {
-    if (!files?.length) return
-    const list = Array.from(files).filter((f) => f.type.startsWith('image/'))
-    if (kind === 'ARTICLE') setArticleFiles((prev) => [...prev, ...list].slice(0, 3))
-    else setDetailFiles((prev) => [...prev, ...list].slice(0, 8))
-  }
-
-  async function runAnalyze() {
-    if (!token || !purchase) return
-    setError('')
-    setBusy(true)
-    setJobStatus('QUEUED')
-    try {
-      pushLog('画像解析ジョブを開始…')
-      const { job_id } = await analyzeImages(token, purchase.id)
-      const job = await pollJob(token, job_id, (j) => {
-        setJobStatus(j.status)
-        pushLog(`解析ジョブ: ${j.status}`)
-      })
-      if (job.status === 'FAILED') throw new Error(job.error || '画像解析に失敗しました')
-      const fresh = await getPurchase(token, purchase.id)
-      setPurchase(fresh)
-      setProducts(productsFromPurchase(fresh))
-      setForm((f) => ({
-        ...f,
-        category: fresh.category || f.category,
-        characteristics: fresh.characteristics || f.characteristics,
-      }))
-      setStep('generate')
-      const many = fresh.products && fresh.products.length > 1
-      pushLog(
-        many
-          ? `解析完了 — ${fresh.products.length}商品を検出。内容を確認してください`
-          : '解析完了 — 内容を確認してから記事を生成してください',
-      )
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '画像解析に失敗しました')
-      pushLog(`解析エラー: ${err instanceof Error ? err.message : err}`)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function saveCorrections() {
-    if (!token || !purchase) return
-    setBusy(true)
-    try {
-      const fresh = await updatePurchase(token, purchase.id, {
-        ...formPayload(),
-        persona_id: personaId || null,
-      })
-      setPurchase(fresh)
-      pushLog('商品情報を保存しました')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '保存に失敗しました')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function runGenerate() {
-    if (!token || !purchase) return
-    setError('')
-    setBusy(true)
-    setJobStatus('QUEUED')
-    try {
-      await saveCorrections()
-      pushLog('記事生成ジョブを開始…')
-      const { job_id } = await generateArticle(
-        token,
-        purchase.id,
-        buildUserInstructions(),
-      )
-      const job = await pollJob(token, job_id, (j) => {
-        setJobStatus(j.status)
-        pushLog(`生成ジョブ: ${j.status}`)
-      })
-      if (job.status === 'FAILED') throw new Error(job.error || '記事生成に失敗しました')
-
-      pushLog('記事と類似率チェックを待機中…')
-      let art: Article | null = null
-      for (let i = 0; i < 40; i++) {
-        const arts = await listArticles(token)
-        art = arts.find((a) => a.purchase_id === purchase.id) || null
-        if (art?.current_version?.title) {
-          art = await getArticle(token, art.id)
-          const stillChecking =
-            art.status === 'DRAFT' && !art.latest_similarity_score && i < 20
-          if (!stillChecking) break
-        }
-        await new Promise((r) => setTimeout(r, 1500))
-      }
-      if (!art) throw new Error('生成後の記事が見つかりません')
-      setArticle(art)
-      setPurchase(await getPurchase(token, purchase.id))
-      setStep('done')
-      pushLog(`記事の準備完了 — ステータス ${art.status}`)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '記事生成に失敗しました')
-      pushLog(`生成エラー: ${err instanceof Error ? err.message : err}`)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function uploadAndAnalyze() {
-    if (!token) return
-    // Retry path: purchase + images already exist, just re-run analysis.
-    if (purchase) {
-      await runAnalyze()
-      return
-    }
-    if (!storeId) {
-      setError('掲載店舗を選択してください')
-      return
-    }
-    if (!articleFiles.length && !detailFiles.length) {
-      setError('画像を1枚以上追加してください')
-      return
-    }
-    setError('')
-    setBusy(true)
-    setJobStatus('QUEUED')
-    try {
-      pushLog('買取データを作成中…')
-      const created = await createPurchase(token, {
-        store_id: storeId,
-        persona_id: personaId || null,
-        ...formPayload(),
-      })
-      setPurchase(created)
-      pushLog(`買取 ${created.id.slice(0, 8)}… を作成`)
-      let order = 0
-      for (const file of articleFiles) {
-        await uploadImage(token, created.id, file, 'ARTICLE', order++)
-        pushLog(`記事画像をアップロード: ${file.name}`)
-      }
-      for (const file of detailFiles) {
-        await uploadImage(token, created.id, file, 'DETAIL', order++)
-        pushLog(`詳細画像をアップロード: ${file.name}`)
-      }
-      setStep('analyze')
-      pushLog('画像解析ジョブを開始…')
-      const { job_id } = await analyzeImages(token, created.id)
-      const job = await pollJob(token, job_id, (j) => {
-        setJobStatus(j.status)
-        pushLog(`解析ジョブ: ${j.status}`)
-      })
-      if (job.status === 'FAILED') throw new Error(job.error || '画像解析に失敗しました')
-      const fresh = await getPurchase(token, created.id)
-      setPurchase(fresh)
-      setProducts(productsFromPurchase(fresh))
-      setForm((f) => ({
-        ...f,
-        category: fresh.category || f.category,
-        characteristics: fresh.characteristics || f.characteristics,
-      }))
-      setStep('generate')
-      const many = fresh.products && fresh.products.length > 1
-      pushLog(
-        many
-          ? `解析完了 — ${fresh.products.length}商品を検出。内容を確認してください`
-          : '解析完了 — 内容を確認して記事を生成してください',
-      )
-    } catch (err) {
-      setStep('input')
-      setError(err instanceof Error ? err.message : '処理に失敗しました')
-      pushLog(`エラー: ${err instanceof Error ? err.message : err}`)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  function startEditing() {
-    const v = article?.current_version
-    if (!v) return
-    setTplOpen(false)
-    setEdit({
-      title: v.title || '',
-      body: v.body || '',
-      rendered_html: v.rendered_html || '',
-      excerpt: v.excerpt || '',
-      tags: (v.tag_suggestions || []).join(', '),
-      category_suggestion: v.category_suggestion || '',
-    })
-    setAdvanced(false)
-    setEditing(true)
-  }
-
-  async function saveEdit() {
-    if (!token || !article) return
-    setError('')
-    setBusy(true)
-    try {
-      const payload = advanced
-        ? {
-            title: edit.title,
-            rendered_html: edit.rendered_html,
-            excerpt: edit.excerpt,
-            category_suggestion: edit.category_suggestion || undefined,
-            tag_suggestions: edit.tags
-              .split(',')
-              .map((t) => t.trim())
-              .filter(Boolean),
-          }
-        : {
-            title: edit.title,
-            body: edit.body,
-            excerpt: edit.excerpt,
-            category_suggestion: edit.category_suggestion || undefined,
-            tag_suggestions: edit.tags
-              .split(',')
-              .map((t) => t.trim())
-              .filter(Boolean),
-          }
-      const updated = await editArticle(token, article.id, payload)
-      const fresh = await getArticle(token, updated.id)
-      setArticle(fresh)
-      setEditing(false)
-      pushLog(`記事を編集しました — 新バージョン v${fresh.current_version?.version_no}`)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '編集の保存に失敗しました')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function loadRelated() {
-    if (!token || !article) return
-    setRelatedMsg('')
-    setRelated(null)
-    try {
-      const items = await getRelatedPosts(token, article.id, 4)
-      setRelated(items)
-      if (!items.length) setRelatedMsg('YARPPから関連記事が返りませんでした。')
-    } catch (err) {
-      setRelatedMsg(err instanceof Error ? err.message : '関連記事の取得に失敗しました')
-    }
-  }
-
-  async function openTemplateEditor() {
-    if (!token || !storeId) {
-      setError('掲載店舗を選択してください')
-      return
-    }
-    setEditing(false)
-    try {
-      const { resolved } = await getArticleTemplate(token, storeId)
-      setTpl({
-        thanks_text: String(resolved.thanks_text ?? ''),
-        phone_general: String(resolved.phone_general ?? ''),
-        phone_dispatch: String(resolved.phone_dispatch ?? ''),
-        footer_html: String(resolved.footer_html ?? ''),
-      })
-      setTplOpen(true)
-      pushLog('店舗テンプレート編集を開きました')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'テンプレートの取得に失敗しました')
-    }
-  }
-
-  async function saveTemplate() {
-    if (!token || !storeId) return
-    setBusy(true)
-    try {
-      await updateArticleTemplate(token, storeId, tpl)
-      pushLog('店舗テンプレート（フッター等）を保存しました')
-      setTplOpen(false)
-      // Re-fetch stores so subsequent generations pick up the new template.
-      setStores(await listStores(token))
-      // Rebuild the current article so the preview reflects the new footer.
-      if (article) {
-        const updated = await editArticle(token, article.id, {
-          body: article.current_version?.body ?? '',
-        })
-        setArticle(await getArticle(token, updated.id))
-        pushLog('現在の記事を新テンプレートで再組み立てしました')
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'テンプレートの保存に失敗しました')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  function resetFlow() {
-    setPurchase(null)
-    setArticle(null)
-    setArticleFiles([])
-    setDetailFiles([])
-    setJobStatus('')
-    setEditing(false)
-    setTplOpen(false)
-    setRelated(null)
-    setRelatedMsg('')
-    setStep('input')
-    setForm({
-      purchase_date: todayIso(),
-      purchase_method: '店頭',
-      purchase_area: '—',
-      category: '',
-      characteristics: '',
-      manual_notes: '',
-      user_instructions: '',
-    })
-    setTopicFlags(
-      Object.fromEntries(TOPIC_OPTIONS.map((t) => [t.id, false])) as Record<TopicId, boolean>,
-    )
-    setProducts([emptyProduct()])
-    pushLog('リセット — 新しい買取テストを開始')
+    navigate({ name: 'articles' })
   }
 
   if (!token || !user) {
     return (
-      <div className="login-wrap">
-        <form className="panel login-card" onSubmit={onLogin}>
-          <div className="brand" style={{ marginBottom: 18 }}>
-            <strong>CORE FIGHTER</strong>
-            <span>テストコンソール — 画像からAI記事下書きまで</span>
+      <>
+        {bootError && (
+          <div style={{ maxWidth: 400, margin: '20px auto -10px' }}>
+            <Banner kind="error">{bootError}</Banner>
           </div>
-          {error && <div className="error-banner">{error}</div>}
-          <div className="field">
-            <label>メールアドレス</label>
-            <input value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" />
-          </div>
-          <div className="field">
-            <label>パスワード</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-            />
-          </div>
-          <button className="btn btn-primary" disabled={busy} type="submit">
-            {busy ? 'ログイン中…' : 'ログイン'}
-          </button>
-        </form>
-      </div>
+        )}
+        <LoginPage onSubmit={handleLogin} />
+      </>
     )
   }
 
-  const version = article?.current_version
+  const isAdmin = user.role === 'ADMIN'
+  const accountLabel = `${user.full_name || user.email}・${roleLabel(user.role)}`
+  const isWorkflow = route.name === 'generate' || route.name === 'ops'
 
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div className="brand">
-          <strong>CORE FIGHTER</strong>
-          <span>テストUI — 画像アップロード・入力・AI生成・結果確認</span>
-        </div>
-        <div className="user-chip">
-          <span>
-            {user.full_name || user.email} · {user.role}
-          </span>
-          <button className="btn btn-ghost" type="button" onClick={logout}>
-            ログアウト
-          </button>
-        </div>
-      </header>
+    <>
+      <AppHeader
+        accountLabel={accountLabel}
+        onLogout={logout}
+        onHome={() => navigate({ name: 'articles' })}
+        showAdmin={isAdmin}
+        adminActive={route.name === 'admin'}
+        onAdmin={() => navigate({ name: 'admin' })}
+      />
 
-      <div className="mode-switch">
-        <button
-          type="button"
-          className={`btn ${uiMode === 'generate' ? 'btn-primary' : 'btn-ghost'}`}
-          onClick={() => setUiMode('generate')}
-        >
-          1. 記事生成
-        </button>
-        <button
-          type="button"
-          className={`btn ${uiMode === 'ops' ? 'btn-primary' : 'btn-ghost'}`}
-          onClick={() => setUiMode('ops')}
-        >
-          2. 運用（承認・WP）
-        </button>
-      </div>
+      {isWorkflow && (
+        <TabBar
+          active={route.name === 'ops' ? 'ops' : 'generate'}
+          onChange={(tab) => navigate(tab === 'ops' ? { name: 'ops' } : { name: 'generate' })}
+        />
+      )}
 
-      {uiMode === 'ops' ? (
-        <OpsPanel
+      {route.name === 'admin' && (
+        <BackBar label="記事一覧へ戻る" onClick={() => navigate({ name: 'articles' })} />
+      )}
+
+      {route.name === 'articles' && (
+        <ArticleListPage
           token={token}
           stores={stores}
-          onOpenArticle={(a) => {
-            setArticle(a)
-            setUiMode('generate')
-            setStep('done')
-            setEditing(false)
-            setTplOpen(false)
-          }}
+          isAdmin={isAdmin}
+          onCreate={() => navigate({ name: 'generate' })}
+          onEdit={(articleId) => navigate({ name: 'generate', articleId })}
         />
-      ) : (
-        <>
-      {error && <div className="error-banner">{error}</div>}
-
-      <div className="steps">
-        {(
-          [
-            ['input', '1. 入力'],
-            ['analyze', '2. 画像解析'],
-            ['generate', '3. 記事生成'],
-            ['done', '4. 結果'],
-          ] as const
-        ).map(([id, label]) => {
-          const order = ['input', 'analyze', 'generate', 'done']
-          const active = step === id
-          const done = order.indexOf(step) > order.indexOf(id)
-          return (
-            <span key={id} className={`step${active ? ' active' : ''}${done ? ' done' : ''}`}>
-              {label}
-            </span>
-          )
-        })}
-      </div>
-
-      <div className="grid-2">
-        <section className="panel">
-          <h2>入力</h2>
-          <p className="lead">
-            {step === 'input'
-              ? '① 画像を追加 → ②「画像を解析」を押すと、作成・アップロード・解析をまとめて実行します。商品情報は空欄でも解析で補完されます。'
-              : '解析結果を確認・修正し、必要に応じて追加情報を入力してから「記事を生成」を押してください。'}
-          </p>
-
-          <div className="field">
-            <label>AIペルソナ</label>
-            <select
-              value={personaId}
-              onChange={(e) => setPersonaId(e.target.value)}
-              disabled={step === 'done'}
-            >
-              <option value="">— なし —</option>
-              {personas.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="field">
-            <label>日付</label>
-            <input
-              type="date"
-              value={form.purchase_date}
-              onChange={(e) => setForm({ ...form, purchase_date: e.target.value })}
-            />
-          </div>
-
-          <div className="field">
-            <label>買取方法</label>
-            <select
-              value={form.purchase_method}
-              onChange={(e) => {
-                const method = e.target.value
-                setForm((f) => ({
-                  ...f,
-                  purchase_method: method,
-                  purchase_area: areaIsManual(method)
-                    ? f.purchase_area === '—'
-                      ? ''
-                      : f.purchase_area
-                    : '—',
-                }))
-              }}
-            >
-              <option value="店頭">店頭</option>
-              <option value="出張">出張</option>
-              <option value="宅配">宅配買取</option>
-            </select>
-          </div>
-
-          <div className="field">
-            <label>買取地区</label>
-            {areaIsManual(form.purchase_method) ? (
-              <input
-                value={form.purchase_area}
-                placeholder="例）札幌市東区 / 白石区など"
-                onChange={(e) => setForm({ ...form, purchase_area: e.target.value })}
-              />
-            ) : (
-              <input value="—" disabled title="店頭買取のため買取地区は「—」固定です" />
-            )}
-          </div>
-
-          <div className="field">
-            <label>掲載店舗</label>
-            <select value={storeId} onChange={(e) => setStoreId(e.target.value)} disabled={!!purchase}>
-              {stores.map((s) => {
-                const label =
-                  (s.article_config?.label as string | undefined) ||
-                  s.name.replace(/^パワフルトレードセンター\s*/, '').replace(/店$/, '') ||
-                  s.code
-                return (
-                  <option key={s.id} value={s.id}>
-                    {label}
-                  </option>
-                )
-              })}
-            </select>
-          </div>
-
-          {step === 'input' && (
-            <div
-              className={`dropzone${dragOver ? ' drag' : ''}`}
-              onDragOver={(e) => {
-                e.preventDefault()
-                setDragOver(true)
-              }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => {
-                e.preventDefault()
-                setDragOver(false)
-                onPickFiles(e.dataTransfer.files, 'DETAIL')
-              }}
-            >
-              <div>① 商品画像をドロップ、またはファイルを選択</div>
-              <div className="meta" style={{ marginTop: 6 }}>
-                メイン：全商品をまとめて写した記事用の写真／詳細：型番ラベルや箱などの接写（情報抽出用）
-              </div>
-              <div className="row" style={{ justifyContent: 'center', marginTop: 10 }}>
-                <label className="btn btn-ghost">
-                  メイン画像（記事用・まとめ）
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    hidden
-                    onChange={(e) => onPickFiles(e.target.files, 'ARTICLE')}
-                  />
-                </label>
-                <label className="btn btn-ghost">
-                  詳細画像（ラベル・箱の接写）
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    hidden
-                    onChange={(e) => onPickFiles(e.target.files, 'DETAIL')}
-                  />
-                </label>
-              </div>
-            </div>
-          )}
-
-          {previews.length > 0 && (
-            <div className="thumbs">
-              {previews.map((p) => (
-                <div className="thumb" key={p.url}>
-                  <img src={p.url} alt={p.file.name} />
-                  <span className="tag">{imageTypeLabel(p.type)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-            <label style={{ fontWeight: 600 }}>
-              商品{products.length > 1 ? `（${products.length}種類）` : ''}
-            </label>
-            <button className="btn btn-ghost" type="button" onClick={addProduct}>
-              ＋商品を追加
-            </button>
-          </div>
-          <p className="meta" style={{ marginTop: 0 }}>
-            種類ごとに1ブロックで入力してください。空欄は画像解析で補完されます。
-          </p>
-
-          {products.map((p, idx) => (
-            <div
-              key={idx}
-              className="product-card"
-              style={{
-                border: '1px solid var(--line, rgba(255,255,255,0.12))',
-                borderRadius: 8,
-                padding: 10,
-                marginBottom: 10,
-              }}
-            >
-              <div
-                className="row"
-                style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}
-              >
-                <strong style={{ fontSize: '0.85rem' }}>商品 {idx + 1}</strong>
-                {products.length > 1 && (
-                  <button
-                    className="btn btn-ghost"
-                    type="button"
-                    onClick={() => removeProduct(idx)}
-                    title="この商品を削除"
-                  >
-                    削除
-                  </button>
-                )}
-              </div>
-              <div className="field">
-                <label>メーカー</label>
-                <input
-                  value={p.manufacturer}
-                  onChange={(e) => updateProduct(idx, { manufacturer: e.target.value })}
-                />
-              </div>
-              <div className="field">
-                <label>商品</label>
-                <input
-                  value={p.product_name}
-                  onChange={(e) => updateProduct(idx, { product_name: e.target.value })}
-                />
-              </div>
-              <div className="field">
-                <label>型式</label>
-                <input
-                  value={p.model_number}
-                  onChange={(e) => updateProduct(idx, { model_number: e.target.value })}
-                />
-              </div>
-              <div className="field">
-                <label>状態</label>
-                <input
-                  value={p.condition}
-                  onChange={(e) => updateProduct(idx, { condition: e.target.value })}
-                />
-              </div>
-              <div className="row">
-                <div className="field" style={{ flex: 1 }}>
-                  <label>個数</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={p.quantity}
-                    onChange={(e) => updateProduct(idx, { quantity: e.target.value })}
-                  />
-                </div>
-                <div className="field" style={{ flex: 1 }}>
-                  <label>単位</label>
-                  <input
-                    value={p.quantity_unit}
-                    placeholder="点 / 台 / 本"
-                    onChange={(e) => updateProduct(idx, { quantity_unit: e.target.value })}
-                  />
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {(step === 'generate' || step === 'done') && (
-            <div
-              style={{
-                marginTop: 12,
-                paddingTop: 12,
-                borderTop: '1px solid var(--line, rgba(255,255,255,0.12))',
-              }}
-            >
-              <h3 style={{ fontSize: '0.92rem', margin: '0 0 4px' }}>記事作成用の追加情報（任意）</h3>
-              <p className="meta" style={{ marginTop: 0 }}>
-                商品が複数種類ある場合は、上の「＋商品を追加」で種類ごとに入力してください。
-                カテゴリーや補足は記事全体に適用されます。
-              </p>
-              <div className="field">
-                <label>WordPressカテゴリー（複数可）</label>
-                <p className="meta" style={{ marginTop: 0 }}>
-                  投稿時は EXPERIENCE が自動付与され、ここで選んだカテゴリーもすべて付きます
-                  （例: EXPERIENCE + 建材 + ペアコイル）。
-                </p>
-                <div className="topic-checks">
-                  {wpCategories.map((c) => {
-                    const selected = splitCats(form.category)
-                    const on = selected.includes(c.name)
-                    return (
-                      <label key={c.id} className="topic-check">
-                        <input
-                          type="checkbox"
-                          checked={on}
-                          onChange={() => {
-                            const next = on
-                              ? selected.filter((n) => n !== c.name)
-                              : [...selected, c.name]
-                            setForm({ ...form, category: joinCats(next) })
-                          }}
-                        />
-                        <span>{c.name}</span>
-                      </label>
-                    )
-                  })}
-                </div>
-              </div>
-              <div className="field">
-                <label>特徴・商品リスト（複数可）</label>
-                <textarea
-                  value={form.characteristics}
-                  placeholder="例）&#10;・リョービ 振動ドリル PD-196VR ×1&#10;・マキタ インパクト TD172D ×2"
-                  onChange={(e) => setForm({ ...form, characteristics: e.target.value })}
-                />
-              </div>
-              <div className="field">
-                <label>メモ（AIへのヒント）</label>
-                <textarea
-                  value={form.manual_notes}
-                  onChange={(e) => setForm({ ...form, manual_notes: e.target.value })}
-                />
-              </div>
-              <div className="field">
-                <label>記事への追加指示</label>
-                <p className="meta" style={{ marginTop: 0 }}>
-                  入れたいネタにチェックを入れてください（複数可）。必要なら下に自由文も追加できます。
-                </p>
-                <div className="topic-checks">
-                  {TOPIC_OPTIONS.map((t) => (
-                    <label key={t.id} className="topic-check">
-                      <input
-                        type="checkbox"
-                        checked={!!topicFlags[t.id]}
-                        onChange={() => toggleTopic(t.id)}
-                      />
-                      <span>{t.label}</span>
-                    </label>
-                  ))}
-                </div>
-                <textarea
-                  value={form.user_instructions}
-                  onChange={(e) => setForm({ ...form, user_instructions: e.target.value })}
-                  placeholder="その他の指示（トーン、長さ、強調したいポイントなど）…"
-                  style={{ marginTop: 8 }}
-                />
-              </div>
-            </div>
-          )}
-
-          <div className="row">
-            {step === 'input' && (
-              <button
-                className="btn btn-primary"
-                type="button"
-                disabled={busy}
-                onClick={uploadAndAnalyze}
-              >
-                {busy ? '処理中…' : purchase ? '② 画像を再解析' : '② 画像を解析'}
-              </button>
-            )}
-            {step === 'analyze' && (
-              <button className="btn btn-warn" type="button" disabled>
-                画像を解析中…
-              </button>
-            )}
-            {(step === 'generate' || step === 'done') && (
-              <>
-                <button className="btn btn-ghost" type="button" disabled={busy} onClick={saveCorrections}>
-                  修正を保存
-                </button>
-                <button className="btn btn-secondary" type="button" disabled={busy} onClick={runGenerate}>
-                  {busy ? '生成中…' : '記事を生成'}
-                </button>
-              </>
-            )}
-            {purchase && (
-              <button className="btn btn-ghost" type="button" disabled={busy} onClick={resetFlow}>
-                新規テスト
-              </button>
-            )}
-          </div>
-
-          <div className="status-bar">
-            {purchase && <span className={pillClass(purchase.status)}>買取: {purchase.status}</span>}
-            {jobStatus && <span className={pillClass(jobStatus)}>ジョブ: {jobStatus}</span>}
-            {article && <span className={pillClass(article.status)}>記事: {article.status}</span>}
-          </div>
-        </section>
-
-        <aside>
-          <section className="panel">
-            <h2>結果</h2>
-            <p className="lead">AI抽出結果、ジョブログ、生成記事のプレビュー。</p>
-
-            {purchase?.ai_extraction && Object.keys(purchase.ai_extraction).length > 0 && (
-              <>
-                <h3 style={{ fontSize: '0.95rem', margin: '0 0 8px' }}>AI抽出結果</h3>
-                <div className="result-box">{JSON.stringify(purchase.ai_extraction, null, 2)}</div>
-              </>
-            )}
-
-            {version && !editing && !tplOpen && (
-              <div className="article-preview" style={{ marginTop: 16 }}>
-                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h3 style={{ margin: 0 }}>{version.title || '（タイトルなし）'}</h3>
-                  <div className="row" style={{ gap: 6 }}>
-                    <button className="btn btn-ghost" type="button" onClick={openTemplateEditor}>
-                      テンプレート編集
-                    </button>
-                    <button className="btn btn-ghost" type="button" onClick={startEditing}>
-                      編集・カスタマイズ
-                    </button>
-                    {article &&
-                      ['WAITING_LIST', 'SIMILARITY_WARNING', 'RETURNED', 'ON_HOLD', 'DRAFT'].includes(
-                        article.status,
-                      ) && (
-                        <button
-                          className="btn btn-primary"
-                          type="button"
-                          disabled={busy}
-                          onClick={async () => {
-                            setBusy(true)
-                            setError('')
-                            try {
-                              const updated = await submitForApproval(token, article.id)
-                              setArticle(updated)
-                              pushLog('承認申請しました → 運用タブで承認できます')
-                              setUiMode('ops')
-                            } catch (err) {
-                              setError(err instanceof Error ? err.message : '承認申請に失敗')
-                            } finally {
-                              setBusy(false)
-                            }
-                          }}
-                        >
-                          承認申請
-                        </button>
-                      )}
-                  </div>
-                </div>
-                <div className="meta">
-                  v{version.version_no}
-                  {version.validation_outcome ? ` · 検証 ${version.validation_outcome}` : ''}
-                  {article?.latest_similarity_score != null
-                    ? ` · 類似率 ${(article.latest_similarity_score * 100).toFixed(1)}%`
-                    : ''}
-                  {version.category_suggestion ? ` · カテゴリー ${version.category_suggestion}` : ''}
-                </div>
-                <div
-                  className="body"
-                  dangerouslySetInnerHTML={{
-                    __html: toProxy(version.rendered_html || version.body || ''),
-                  }}
-                />
-                {version.excerpt && (
-                  <p style={{ marginTop: 12, color: 'var(--ink-soft)' }}>
-                    <strong>抜粋:</strong> {version.excerpt}
-                  </p>
-                )}
-                {(version.tag_suggestions?.length ?? 0) > 0 && (
-                  <p className="meta">タグ: {version.tag_suggestions.join(', ')}</p>
-                )}
-              </div>
-            )}
-
-            {version && tplOpen && (
-              <div className="article-preview" style={{ marginTop: 16 }}>
-                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h3 style={{ margin: '0 0 4px' }}>店舗テンプレート編集</h3>
-                  <button
-                    className="btn btn-ghost"
-                    type="button"
-                    disabled={busy}
-                    onClick={() => setTplOpen(false)}
-                  >
-                    記事プレビューに戻る
-                  </button>
-                </div>
-                <p className="meta" style={{ marginTop: 0 }}>
-                  電話番号・住所などの定型文を編集します。保存するとこの店舗の今後の記事に反映されます。
-                </p>
-                <div className="field">
-                  <label>感謝の一文（赤太字）</label>
-                  <input
-                    value={tpl.thanks_text}
-                    onChange={(e) => setTpl({ ...tpl, thanks_text: e.target.value })}
-                  />
-                </div>
-                <div className="row">
-                  <div className="field" style={{ flex: 1 }}>
-                    <label>総合ダイヤル</label>
-                    <input
-                      value={tpl.phone_general}
-                      onChange={(e) => setTpl({ ...tpl, phone_general: e.target.value })}
-                    />
-                  </div>
-                  <div className="field" style={{ flex: 1 }}>
-                    <label>出張買取ダイヤル</label>
-                    <input
-                      value={tpl.phone_dispatch}
-                      onChange={(e) => setTpl({ ...tpl, phone_dispatch: e.target.value })}
-                    />
-                  </div>
-                </div>
-                <div className="field">
-                  <label>フッター定型文</label>
-                  <textarea
-                    style={{ minHeight: 220 }}
-                    value={tpl.footer_html}
-                    onChange={(e) => setTpl({ ...tpl, footer_html: e.target.value })}
-                  />
-                  <p className="meta">
-                    電話番号の差し込みには <code>{'{phone_general}'}</code> /{' '}
-                    <code>{'{phone_dispatch}'}</code> が使えます。
-                  </p>
-                </div>
-                <div className="row">
-                  <button className="btn btn-primary" type="button" disabled={busy} onClick={saveTemplate}>
-                    {busy ? '保存中…' : 'テンプレートを保存'}
-                  </button>
-                  <button
-                    className="btn btn-ghost"
-                    type="button"
-                    disabled={busy}
-                    onClick={() => setTplOpen(false)}
-                  >
-                    閉じる
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {version && editing && (
-              <div className="article-preview" style={{ marginTop: 16 }}>
-                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h3 style={{ margin: 0 }}>記事を編集</h3>
-                  <label className="row" style={{ gap: 6, fontSize: '0.85rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={advanced}
-                      onChange={(e) => setAdvanced(e.target.checked)}
-                    />
-                    詳細（全文HTML）
-                  </label>
-                </div>
-
-                <div className="field">
-                  <label>タイトル</label>
-                  <input
-                    value={edit.title}
-                    onChange={(e) => setEdit({ ...edit, title: e.target.value })}
-                  />
-                </div>
-
-                {!advanced ? (
-                  <div className="field">
-                    <label>本文（HTML — 固定見出し・フッターはそのまま）</label>
-                    <textarea
-                      style={{ minHeight: 200, fontFamily: 'monospace' }}
-                      value={edit.body}
-                      onChange={(e) => setEdit({ ...edit, body: e.target.value })}
-                    />
-                  </div>
-                ) : (
-                  <div className="field">
-                    <label>組み立て済みHTML全文（詳細）</label>
-                    <textarea
-                      style={{ minHeight: 260, fontFamily: 'monospace' }}
-                      value={edit.rendered_html}
-                      onChange={(e) => setEdit({ ...edit, rendered_html: e.target.value })}
-                    />
-                  </div>
-                )}
-
-                <div className="field">
-                  <label>WordPressカテゴリー（複数可）</label>
-                  <div className="topic-checks">
-                    {wpCategories.map((c) => {
-                      const selected = splitCats(edit.category_suggestion)
-                      const on = selected.includes(c.name)
-                      return (
-                        <label key={c.id} className="topic-check">
-                          <input
-                            type="checkbox"
-                            checked={on}
-                            onChange={() => {
-                              const next = on
-                                ? selected.filter((n) => n !== c.name)
-                                : [...selected, c.name]
-                              setEdit({ ...edit, category_suggestion: joinCats(next) })
-                            }}
-                          />
-                          <span>{c.name}</span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                </div>
-                <div className="field">
-                  <label>抜粋</label>
-                  <textarea
-                    value={edit.excerpt}
-                    onChange={(e) => setEdit({ ...edit, excerpt: e.target.value })}
-                  />
-                </div>
-                <div className="field">
-                  <label>タグ（カンマ区切り）</label>
-                  <input
-                    value={edit.tags}
-                    onChange={(e) => setEdit({ ...edit, tags: e.target.value })}
-                  />
-                </div>
-
-                <div className="row">
-                  <button className="btn btn-primary" type="button" disabled={busy} onClick={saveEdit}>
-                    {busy ? '保存中…' : '新バージョンとして保存'}
-                  </button>
-                  <button
-                    className="btn btn-ghost"
-                    type="button"
-                    disabled={busy}
-                    onClick={() => setEditing(false)}
-                  >
-                    キャンセル
-                  </button>
-                </div>
-
-                <h4 style={{ margin: '16px 0 6px' }}>プレビュー</h4>
-                <div
-                  className="body"
-                  dangerouslySetInnerHTML={{
-                    __html: toProxy(advanced ? edit.rendered_html : edit.body),
-                  }}
-                />
-              </div>
-            )}
-
-            {version && !editing && !tplOpen && (
-              <div style={{ marginTop: 16 }}>
-                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h3 style={{ margin: 0, fontSize: '0.95rem' }}>
-                    年間買取10000件 パワトレ買取実績 (YARPP)
-                  </h3>
-                  <button className="btn btn-ghost" type="button" onClick={loadRelated}>
-                    関連記事を取得
-                  </button>
-                </div>
-                {relatedMsg && <p className="meta">{relatedMsg}</p>}
-                {related && related.length > 0 && (
-                  <div className="thumbs" style={{ marginTop: 10 }}>
-                    {related.map((r) => (
-                      <a
-                        className="thumb"
-                        key={r.id ?? r.link}
-                        href={r.link}
-                        target="_blank"
-                        rel="noreferrer"
-                        title={r.title}
-                      >
-                        {r.thumbnail ? (
-                          <img src={r.thumbnail} alt={r.title} />
-                        ) : (
-                          <div style={{ padding: 8, fontSize: '0.75rem' }}>{r.title}</div>
-                        )}
-                        <span className="tag">{r.date?.slice(0, 10)}</span>
-                      </a>
-                    ))}
-                  </div>
-                )}
-                {!related && !relatedMsg && (
-                  <p className="meta">
-                    WordPressへ公開後、YARPPが表示する関連記事4件を取得できます。
-                  </p>
-                )}
-              </div>
-            )}
-
-            {!purchase && !version && (
-              <div className="result-box" style={{ opacity: 0.7 }}>
-                まだ結果はありません。画像をアップロードしてフローを実行してください。
-              </div>
-            )}
-          </section>
-
-          <section className="panel">
-            <h2>アクティビティ</h2>
-            <div className="result-box" style={{ maxHeight: 220 }}>
-              {log.length ? log.join('\n') : '操作待ち…'}
-            </div>
-          </section>
-        </aside>
-      </div>
-        </>
       )}
-    </div>
+
+      {route.name === 'generate' && (
+        <GeneratePage
+          key={route.articleId || 'new'}
+          token={token}
+          user={user}
+          stores={stores}
+          personas={personas}
+          wpCategories={wpCategories}
+          articleId={route.articleId}
+          onGoOps={() => navigate({ name: 'ops' })}
+          onGoList={() => navigate({ name: 'articles' })}
+          onOpenArticle={(articleId) => navigate({ name: 'generate', articleId })}
+        />
+      )}
+
+      {route.name === 'ops' && (
+        <div className="cf-page">
+          <OpsPanel
+            token={token}
+            stores={stores}
+            onOpenArticle={(article) => navigate({ name: 'generate', articleId: article.id })}
+          />
+        </div>
+      )}
+
+      {route.name === 'admin' &&
+        (isAdmin ? (
+          <AdminPage
+            token={token}
+            currentUser={user}
+            stores={stores}
+            onPersonasChanged={loadPersonas}
+          />
+        ) : (
+          <div className="cf-page">
+            <Banner kind="error">この画面は管理者のみ利用できます。</Banner>
+          </div>
+        ))}
+    </>
   )
 }

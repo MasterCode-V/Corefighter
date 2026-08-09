@@ -14,14 +14,23 @@ router = APIRouter()
 
 
 @router.get("", response_model=list[PersonaRead])
-async def list_personas(db: DBSession, current_user: CurrentUser) -> list[Persona]:
-    stmt = select(Persona).where(Persona.is_active.is_(True))
-    if current_user.role != UserRole.ADMIN and current_user.store_id:
-        # Global personas + the user's own store personas.
-        stmt = stmt.where(
-            or_(Persona.store_id.is_(None), Persona.store_id == current_user.store_id)
-        )
-    result = await db.execute(stmt.order_by(Persona.name))
+async def list_personas(
+    db: DBSession, current_user: CurrentUser, include_inactive: bool = False
+) -> list[Persona]:
+    stmt = select(Persona)
+    if not include_inactive:
+        stmt = stmt.where(Persona.is_active.is_(True))
+    if current_user.role != UserRole.ADMIN:
+        if current_user.store_id:
+            # Global personas + the user's own store personas.
+            stmt = stmt.where(
+                or_(Persona.store_id.is_(None), Persona.store_id == current_user.store_id)
+            )
+        # An explicit allowlist on the account narrows this further.
+        allowed = [p.id for p in current_user.allowed_personas]
+        if allowed:
+            stmt = stmt.where(Persona.id.in_(allowed))
+    result = await db.execute(stmt.order_by(Persona.created_at))
     return list(result.scalars().all())
 
 
@@ -54,3 +63,13 @@ async def update_persona(db: DBSession, persona_id: uuid.UUID, body: PersonaUpda
     await db.commit()
     await db.refresh(persona)
     return persona
+
+
+@router.delete("/{persona_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None,
+               dependencies=[Depends(require_manager)])
+async def delete_persona(db: DBSession, persona_id: uuid.UUID) -> None:
+    persona = await db.get(Persona, persona_id)
+    if not persona:
+        raise HTTPException(status_code=404, detail="Persona not found")
+    await db.delete(persona)
+    await db.commit()

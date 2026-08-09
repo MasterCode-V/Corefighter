@@ -1,11 +1,19 @@
 const API = '/api/v1'
 
+export type PersonaBrief = {
+  id: string
+  name: string
+}
+
 export type User = {
   id: string
   email: string
   full_name: string
   role: string
   store_id: string | null
+  is_active?: boolean
+  created_at?: string
+  allowed_personas?: PersonaBrief[]
 }
 
 export type Store = {
@@ -19,6 +27,12 @@ export type Persona = {
   id: string
   name: string
   description: string
+  tone?: string
+  writing_style?: string
+  system_prompt?: string
+  store_id?: string | null
+  is_active?: boolean
+  created_at?: string
 }
 
 export type PurchaseImage = {
@@ -26,6 +40,8 @@ export type PurchaseImage = {
   image_type: 'ARTICLE' | 'DETAIL'
   url: string
   filename: string
+  sort_order?: number
+  product_index?: number | null
 }
 
 export type Product = {
@@ -149,9 +165,95 @@ export async function listStores(token: string) {
   return parse<Store[]>(res)
 }
 
-export async function listPersonas(token: string) {
-  const res = await fetch(`${API}/personas`, { headers: authHeaders(token) })
+export async function listPersonas(token: string, includeInactive = false) {
+  const q = includeInactive ? '?include_inactive=true' : ''
+  const res = await fetch(`${API}/personas${q}`, { headers: authHeaders(token) })
   return parse<Persona[]>(res)
+}
+
+export async function createPersona(
+  token: string,
+  data: { name: string; system_prompt?: string; description?: string; store_id?: string | null },
+) {
+  const res = await fetch(`${API}/personas`, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  })
+  return parse<Persona>(res)
+}
+
+export async function updatePersona(
+  token: string,
+  id: string,
+  data: { name?: string; system_prompt?: string; description?: string; is_active?: boolean },
+) {
+  const res = await fetch(`${API}/personas/${id}`, {
+    method: 'PATCH',
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  })
+  return parse<Persona>(res)
+}
+
+export async function deletePersona(token: string, id: string) {
+  const res = await fetch(`${API}/personas/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  })
+  return parse<void>(res)
+}
+
+export async function listUsers(token: string) {
+  const res = await fetch(`${API}/users`, { headers: authHeaders(token) })
+  return parse<User[]>(res)
+}
+
+export async function createUser(
+  token: string,
+  data: {
+    email: string
+    password: string
+    full_name?: string
+    role?: string
+    store_id?: string | null
+    allowed_persona_ids?: string[]
+  },
+) {
+  const res = await fetch(`${API}/users`, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  })
+  return parse<User>(res)
+}
+
+export async function updateUser(
+  token: string,
+  id: string,
+  data: {
+    full_name?: string
+    role?: string
+    store_id?: string | null
+    is_active?: boolean
+    password?: string
+    allowed_persona_ids?: string[]
+  },
+) {
+  const res = await fetch(`${API}/users/${id}`, {
+    method: 'PATCH',
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  })
+  return parse<User>(res)
+}
+
+export async function deleteUser(token: string, id: string) {
+  const res = await fetch(`${API}/users/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  })
+  return parse<void>(res)
 }
 
 export async function createPurchase(
@@ -209,17 +311,27 @@ export async function uploadImage(
   file: File,
   imageType: 'ARTICLE' | 'DETAIL',
   sortOrder = 0,
+  productIndex?: number,
 ) {
   const form = new FormData()
   form.append('file', file)
   form.append('image_type', imageType)
   form.append('sort_order', String(sortOrder))
+  if (productIndex !== undefined) form.append('product_index', String(productIndex))
   const res = await fetch(`${API}/purchases/${purchaseId}/images`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
     body: form,
   })
   return parse<PurchaseImage>(res)
+}
+
+export async function deletePurchaseImage(token: string, purchaseId: string, imageId: string) {
+  const res = await fetch(`${API}/purchases/${purchaseId}/images/${imageId}`, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  })
+  return parse<void>(res)
 }
 
 export async function analyzeImages(token: string, purchaseId: string) {
@@ -478,6 +590,77 @@ export async function searchArticles(
   q.set('limit', String(opts.limit ?? 50))
   const res = await fetch(`${API}/articles?${q}`, { headers: authHeaders(token) })
   return parse<Article[]>(res)
+}
+
+export type ArticleListItem = {
+  id: string
+  purchase_id: string
+  store_id: string
+  store_name: string
+  status: string
+  title: string
+  thumbnail_url: string | null
+  manufacturer: string
+  product_name: string
+  model_number: string
+  product_count: number
+  published_url: string | null
+  wordpress_post_id: number | null
+  created_at: string
+  updated_at: string
+}
+
+export type ArticleListPage = {
+  total: number
+  limit: number
+  offset: number
+  items: ArticleListItem[]
+}
+
+export type StoreArticleStats = {
+  store_id: string
+  store_name: string
+  published: number
+  draft: number
+  total: number
+}
+
+export type BrowseParams = {
+  status?: string
+  storeId?: string
+  search?: string
+  dateFrom?: string
+  dateTo?: string
+  order?: string
+  limit?: number
+  offset?: number
+}
+
+export async function browseArticles(token: string, params: BrowseParams = {}) {
+  const q = new URLSearchParams()
+  if (params.status) q.set('status', params.status)
+  if (params.storeId) q.set('store_id', params.storeId)
+  if (params.search) q.set('search', params.search)
+  if (params.dateFrom) q.set('date_from', params.dateFrom)
+  if (params.dateTo) q.set('date_to', params.dateTo)
+  q.set('order', params.order || 'updated_desc')
+  q.set('limit', String(params.limit ?? 30))
+  q.set('offset', String(params.offset ?? 0))
+  const res = await fetch(`${API}/articles/browse?${q}`, { headers: authHeaders(token) })
+  return parse<ArticleListPage>(res)
+}
+
+export async function getArticleStats(token: string) {
+  const res = await fetch(`${API}/articles/stats`, { headers: authHeaders(token) })
+  return parse<StoreArticleStats[]>(res)
+}
+
+export async function deleteArticle(token: string, id: string) {
+  const res = await fetch(`${API}/articles/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  })
+  return parse<void>(res)
 }
 
 export async function triggerSimilarityCheck(token: string, articleId: string) {

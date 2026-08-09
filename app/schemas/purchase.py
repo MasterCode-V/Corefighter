@@ -88,6 +88,7 @@ class PurchaseImageRead(BaseModel):
     content_type: str
     size: int
     sort_order: int
+    product_index: Optional[int] = None
     wordpress_media_id: Optional[int] = None
 
 

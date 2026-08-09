@@ -49,6 +49,41 @@ class ArticleRead(BaseModel):
     current_version: Optional[ArticleVersionRead] = None
 
 
+class ArticleListItem(BaseModel):
+    """Compact row used by the article list screen (card grid)."""
+
+    id: uuid.UUID
+    purchase_id: uuid.UUID
+    store_id: uuid.UUID
+    store_name: str = ""
+    status: ArticleStatus
+    title: str = ""
+    thumbnail_url: Optional[str] = None
+    manufacturer: str = ""
+    product_name: str = ""
+    model_number: str = ""
+    product_count: int = 0
+    published_url: Optional[str] = None
+    wordpress_post_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ArticleListPage(BaseModel):
+    total: int
+    limit: int
+    offset: int
+    items: List[ArticleListItem]
+
+
+class StoreArticleStats(BaseModel):
+    store_id: uuid.UUID
+    store_name: str
+    published: int
+    draft: int
+    total: int
+
+
 class GenerateArticleRequest(BaseModel):
     """Trigger article generation (workflow 5). Product info must be confirmed."""
 

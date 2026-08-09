@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -19,6 +19,8 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str = Field(min_length=8, max_length=128)
+    # Personas the account may use. Empty = all active personas.
+    allowed_persona_ids: List[uuid.UUID] = Field(default_factory=list)
 
 
 class UserUpdate(BaseModel):
@@ -27,6 +29,14 @@ class UserUpdate(BaseModel):
     store_id: Optional[uuid.UUID] = None
     is_active: Optional[bool] = None
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+    allowed_persona_ids: Optional[List[uuid.UUID]] = None
+
+
+class PersonaBrief(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
 
 
 class UserRead(UserBase):
@@ -35,3 +45,4 @@ class UserRead(UserBase):
     id: uuid.UUID
     is_active: bool
     created_at: datetime
+    allowed_personas: List[PersonaBrief] = Field(default_factory=list)

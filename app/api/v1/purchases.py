@@ -135,6 +135,7 @@ async def upload_image(
     file: UploadFile = File(...),
     image_type: ImageType = Form(ImageType.DETAIL),
     sort_order: int = Form(0),
+    product_index: Optional[int] = Form(None),
 ) -> PurchaseImage:
     """Workflow 3: upload article (eye-catch) and detail images."""
     purchase = await _get_purchase(db, purchase_id)
@@ -158,6 +159,7 @@ async def upload_image(
         content_type=file.content_type or "",
         size=len(data),
         sort_order=sort_order,
+        product_index=product_index if image_type == ImageType.DETAIL else None,
     )
     db.add(image)
     await db.commit()

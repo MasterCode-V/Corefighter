@@ -1,6 +1,6 @@
 """SQLAlchemy models. Importing this package registers all tables on Base."""
 from app.models.base import Base
-from app.models.user import User
+from app.models.user import User, user_personas
 from app.models.store import Store, WordPressSite
 from app.models.persona import Persona
 from app.models.content_rule import ContentRule
@@ -14,6 +14,7 @@ from app.models.log import ActivityLog
 __all__ = [
     "Base",
     "User",
+    "user_personas",
     "Store",
     "WordPressSite",
     "Persona",
