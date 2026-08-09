@@ -119,11 +119,16 @@ export type Article = {
   current_version: ArticleVersion | null
 }
 
-function authHeaders(token: string | null, json = true): HeadersInit {
+/** Auth only — do not set Content-Type (important for GET/DELETE and bodyless POST). */
+function authHeaders(token: string | null): HeadersInit {
   const h: Record<string, string> = {}
-  if (json) h['Content-Type'] = 'application/json'
   if (token) h.Authorization = `Bearer ${token}`
   return h
+}
+
+/** Auth + JSON Content-Type — use only when sending a JSON body. */
+function jsonHeaders(token: string | null): HeadersInit {
+  return { ...authHeaders(token), 'Content-Type': 'application/json' }
 }
 
 async function parse<T>(res: Response): Promise<T> {
@@ -137,7 +142,11 @@ async function parse<T>(res: Response): Promise<T> {
           : JSON.stringify(body.detail)
         : detail
     } catch {
-      /* ignore */
+      /* nginx / proxy HTML error pages have no JSON detail */
+    }
+    if (detail === 'Bad Request' || detail === '400') {
+      detail =
+        'リクエスト形式エラー（Bad Request）です。入力内容を確認するか、ページを再読み込みしてやり直してください。'
     }
     throw new Error(detail)
   }
@@ -177,7 +186,7 @@ export async function createPersona(
 ) {
   const res = await fetch(`${API}/personas`, {
     method: 'POST',
-    headers: authHeaders(token),
+    headers: jsonHeaders(token),
     body: JSON.stringify(data),
   })
   return parse<Persona>(res)
@@ -190,7 +199,7 @@ export async function updatePersona(
 ) {
   const res = await fetch(`${API}/personas/${id}`, {
     method: 'PATCH',
-    headers: authHeaders(token),
+    headers: jsonHeaders(token),
     body: JSON.stringify(data),
   })
   return parse<Persona>(res)
@@ -222,7 +231,7 @@ export async function createUser(
 ) {
   const res = await fetch(`${API}/users`, {
     method: 'POST',
-    headers: authHeaders(token),
+    headers: jsonHeaders(token),
     body: JSON.stringify(data),
   })
   return parse<User>(res)
@@ -242,7 +251,7 @@ export async function updateUser(
 ) {
   const res = await fetch(`${API}/users/${id}`, {
     method: 'PATCH',
-    headers: authHeaders(token),
+    headers: jsonHeaders(token),
     body: JSON.stringify(data),
   })
   return parse<User>(res)
@@ -279,7 +288,7 @@ export async function createPurchase(
 ) {
   const res = await fetch(`${API}/purchases`, {
     method: 'POST',
-    headers: authHeaders(token),
+    headers: jsonHeaders(token),
     body: JSON.stringify(data),
   })
   return parse<Purchase>(res)
@@ -299,7 +308,7 @@ export async function updatePurchase(
 ) {
   const res = await fetch(`${API}/purchases/${id}`, {
     method: 'PATCH',
-    headers: authHeaders(token),
+    headers: jsonHeaders(token),
     body: JSON.stringify(data),
   })
   return parse<Purchase>(res)
@@ -390,7 +399,7 @@ export type ArticleEdit = {
 export async function editArticle(token: string, id: string, data: ArticleEdit) {
   const res = await fetch(`${API}/articles/${id}/edit`, {
     method: 'POST',
-    headers: authHeaders(token),
+    headers: jsonHeaders(token),
     body: JSON.stringify(data),
   })
   return parse<Article>(res)
@@ -430,7 +439,7 @@ export async function updateArticleTemplate(
 ) {
   const res = await fetch(`${API}/stores/${storeId}/article-template`, {
     method: 'PATCH',
-    headers: authHeaders(token),
+    headers: jsonHeaders(token),
     body: JSON.stringify(data),
   })
   return parse<Store>(res)
@@ -457,7 +466,7 @@ export async function listArticlesByStatus(token: string, status?: string, limit
 export async function submitForApproval(token: string, articleId: string, note?: string) {
   const res = await fetch(`${API}/approval/${articleId}/submit`, {
     method: 'POST',
-    headers: authHeaders(token),
+    headers: jsonHeaders(token),
     body: JSON.stringify({ note: note || null }),
   })
   return parse<Article>(res)
@@ -476,7 +485,7 @@ export async function approvalDecision(
 ) {
   const res = await fetch(`${API}/approval/${articleId}/decision`, {
     method: 'POST',
-    headers: authHeaders(token),
+    headers: jsonHeaders(token),
     body: JSON.stringify({ decision, note: note || null }),
   })
   return parse<Article>(res)
@@ -531,7 +540,7 @@ export async function regenerateArticle(
 ) {
   const res = await fetch(`${API}/articles/${articleId}/regenerate`, {
     method: 'POST',
-    headers: authHeaders(token),
+    headers: jsonHeaders(token),
     body: JSON.stringify({ scope: 'FULL', instruction: instruction || null }),
   })
   return parse<{ job_id: string; job_type: string; status: string }>(res)
@@ -686,7 +695,7 @@ export async function updateWordpressSite(
 ) {
   const res = await fetch(`${API}/stores/wordpress/${siteId}`, {
     method: 'PATCH',
-    headers: authHeaders(token),
+    headers: jsonHeaders(token),
     body: JSON.stringify(data),
   })
   return parse<Record<string, unknown>>(res)
@@ -706,7 +715,7 @@ export async function createWordpressSite(
 ) {
   const res = await fetch(`${API}/stores/${storeId}/wordpress`, {
     method: 'POST',
-    headers: authHeaders(token),
+    headers: jsonHeaders(token),
     body: JSON.stringify(data),
   })
   return parse<Record<string, unknown>>(res)

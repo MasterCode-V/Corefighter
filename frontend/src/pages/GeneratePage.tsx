@@ -28,6 +28,7 @@ import BasicStep, { type BasicForm } from './generate/BasicStep'
 import DoneStep from './generate/DoneStep'
 import ReviewStep from './generate/ReviewStep'
 import {
+  areaIsManual,
   buildUserInstructions,
   emptyProduct,
   type ProductRow,
@@ -253,11 +254,14 @@ export default function GeneratePage({
   const syncPurchase = useCallback(
     async (): Promise<Purchase> => {
       if (!storeId) throw new Error('掲載店舗を選択してください')
+      if (areaIsManual(form.purchase_method) && !form.purchase_area.trim()) {
+        throw new Error('出張・宅配の場合は買取地区を入力してください（例：札幌市白石区）')
+      }
       const payload = {
         persona_id: personaId || null,
         purchase_date: form.purchase_date || undefined,
         purchase_method: form.purchase_method || undefined,
-        purchase_area: form.purchase_area || undefined,
+        purchase_area: form.purchase_area.trim() || undefined,
         products: productsPayload(),
       }
 
@@ -311,11 +315,16 @@ export default function GeneratePage({
   async function runAnalyze() {
     setError('')
     setNotice('')
-    const hasImages =
-      mainFiles.length + mainImages.length > 0 ||
-      products.some((p) => p.files.length + p.images.length > 0)
-    if (!hasImages) {
+    const hasMain = mainFiles.length + mainImages.length > 0
+    const missingDetail = products.some((p) => p.files.length + p.images.length === 0)
+    if (!hasMain && missingDetail) {
       setError('メイン画像または商品の詳細画像を1枚以上追加してください')
+      return
+    }
+    if (missingDetail) {
+      setError(
+        '商品ブロックに詳細画像（ラベル・型番の接写）を追加してください。メイン画像だけでは商品情報を抽出できません。',
+      )
       return
     }
     setBusy(true)
