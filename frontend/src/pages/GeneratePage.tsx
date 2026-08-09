@@ -115,6 +115,7 @@ export default function GeneratePage({
   })
 
   const [busy, setBusy] = useState(false)
+  const [hydrating, setHydrating] = useState(Boolean(articleId))
   const [generating, setGenerating] = useState(false)
   const [jobStatus, setJobStatus] = useState('')
   const [log, setLog] = useState<string[]>([])
@@ -149,10 +150,14 @@ export default function GeneratePage({
   /* ----------------------------------------------------- load for editing */
 
   useEffect(() => {
-    if (!articleId) return
+    if (!articleId) {
+      setHydrating(false)
+      return
+    }
     let cancelled = false
     ;(async () => {
       setBusy(true)
+      setHydrating(true)
       setError('')
       try {
         const loaded = await getArticle(token, articleId)
@@ -174,7 +179,10 @@ export default function GeneratePage({
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : '記事の読み込みに失敗しました')
       } finally {
-        if (!cancelled) setBusy(false)
+        if (!cancelled) {
+          setBusy(false)
+          setHydrating(false)
+        }
       }
     })()
     return () => {
@@ -483,7 +491,9 @@ export default function GeneratePage({
         {error && <Banner kind="error">{error}</Banner>}
         {notice && <Banner kind="ok">{notice}</Banner>}
 
-        {step === 0 && (
+        {hydrating && <div className="cf-empty">記事を読み込んでいます…</div>}
+
+        {!hydrating && step === 0 && (
           <BasicStep
             stores={stores}
             personas={personas}
@@ -511,7 +521,7 @@ export default function GeneratePage({
           />
         )}
 
-        {step === 1 && (
+        {!hydrating && step === 1 && (
           <ReviewStep
             products={products}
             mainImages={mainImages}
@@ -528,7 +538,7 @@ export default function GeneratePage({
           />
         )}
 
-        {step === 2 && (
+        {!hydrating && step === 2 && (
           <ArticleStep
             article={article}
             generating={generating}
@@ -545,7 +555,7 @@ export default function GeneratePage({
           />
         )}
 
-        {step === 3 && (
+        {!hydrating && step === 3 && (
           <DoneStep
             article={article}
             stores={stores}

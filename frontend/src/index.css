@@ -37,7 +37,7 @@
     'Segoe UI', system-ui, sans-serif;
 
   --page-max: 1120px;
-  --header-h: 62px;
+  --header-h: 66px;
 }
 
 * {
@@ -124,8 +124,9 @@ a {
 
 .cf-logo img {
   display: block;
-  height: 38px;
+  height: 40px;
   width: auto;
+  margin-bottom: 4px; /* clears the deco stripes running along the header base */
 }
 
 .cf-header__right {
@@ -908,14 +909,15 @@ a {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow-card);
-  padding: 14px;
+  padding: 0;
+  overflow: hidden;
 }
 
 .cf-card__thumb {
   flex: none;
-  width: 122px;
-  height: 122px;
-  border-radius: 3px;
+  width: 132px;
+  min-height: 148px;
+  align-self: stretch;
   background: var(--placeholder-fill);
   display: grid;
   place-items: center;
@@ -936,6 +938,7 @@ a {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  padding: 13px 14px 13px 0;
 }
 
 .cf-card__badges {
@@ -1249,6 +1252,11 @@ a {
 }
 
 .cf-table tbody tr.is-selected {
+  background: #eaeff8;
+  box-shadow: inset 3px 0 0 var(--navy);
+}
+
+.cf-table tbody tr.is-clickable:hover:not(.is-selected) {
   background: #f6f8fc;
 }
 
@@ -1866,6 +1874,10 @@ a {
   .cf-card__thumb {
     width: 100%;
     height: 150px;
+  }
+
+  .cf-card__main {
+    padding: 13px 14px;
   }
 
   .cf-cta {

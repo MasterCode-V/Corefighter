@@ -10,7 +10,7 @@ function HeaderDeco() {
       style={{
         display: 'block',
         width,
-        height: 15,
+        height: 12,
         background: color,
         transform: 'skewX(-26deg)',
         borderRadius: 1,
@@ -23,9 +23,9 @@ function HeaderDeco() {
         style={{
           position: 'absolute',
           right: 0,
-          bottom: 9,
+          bottom: 2,
           display: 'flex',
-          alignItems: 'center',
+          alignItems: 'flex-end',
           gap: 4,
           width: '100%',
           justifyContent: 'flex-end',
@@ -43,6 +43,7 @@ function HeaderDeco() {
             width: 'clamp(80px, 34vw, 330px)',
             background: 'var(--red)',
             marginLeft: 2,
+            marginBottom: 1,
           }}
         />
       </div>

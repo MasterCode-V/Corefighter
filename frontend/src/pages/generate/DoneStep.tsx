@@ -1,5 +1,5 @@
 import type { Article, Store } from '../../api'
-import { statusBadgeClass, statusLabel } from '../../lib/format'
+import { plainText, statusBadgeClass, statusLabel } from '../../lib/format'
 import { CheckCircleIcon, ExternalIcon } from '../../ui/Icons'
 import { Banner, PanelTitle, Section } from '../../ui/Layout'
 
@@ -49,7 +49,9 @@ export default function DoneStep({
           <div style={{ display: 'grid', gap: 8 }}>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <CheckCircleIcon size={18} />
-              <strong style={{ fontSize: 15 }}>{version?.title || '（タイトルなし）'}</strong>
+              <strong style={{ fontSize: 15 }}>
+                {plainText(version?.title) || '（タイトルなし）'}
+              </strong>
             </div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               {article && (

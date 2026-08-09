@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Article } from '../../api'
-import { toProxy } from '../../lib/format'
+import { plainText, toProxy } from '../../lib/format'
 import { RefreshIcon } from '../../ui/Icons'
 import { Field, PanelTitle, Section } from '../../ui/Layout'
 
@@ -97,7 +97,9 @@ export default function ArticleStep({
 
         <Section num={1} label="記事タイトル">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <strong style={{ fontSize: 15 }}>{version?.title || '（タイトル未生成）'}</strong>
+            <strong style={{ fontSize: 15 }}>
+              {plainText(version?.title) || '（タイトル未生成）'}
+            </strong>
             {article.latest_similarity_score !== null && (
               <span className="cf-badge cf-badge--amber">
                 類似率 {Math.round((article.latest_similarity_score ?? 0) * 100)}%

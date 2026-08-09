@@ -83,3 +83,32 @@ export function proxyImageUrl(url: string | null | undefined): string {
   if (!url) return ''
   return url.replace(/https?:\/\/[^/]*?:9000\/corefighter-media\//, '/api/v1/media/')
 }
+
+const STORE_PREFIXES = ['パワフルトレードセンター', 'パワトレ', 'Powerful Trade Center']
+
+/** Chips and card badges show 東苗穂店, not the full chain name. */
+export function shortStoreName(name: string | null | undefined): string {
+  const value = (name || '').trim()
+  for (const prefix of STORE_PREFIXES) {
+    if (value.startsWith(prefix)) {
+      const rest = value.slice(prefix.length).trim()
+      if (rest) return rest
+    }
+  }
+  return value
+}
+
+/** Titles are stored with markup (e.g. a <br> before the 【…】 part). */
+export function plainText(value: string | null | undefined): string {
+  if (!value) return ''
+  return value
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim()
+}

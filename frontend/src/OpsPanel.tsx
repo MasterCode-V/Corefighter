@@ -23,6 +23,7 @@ import {
   updateWordpressSite,
 } from './api'
 import type { Article, DashboardSummary, Job, Purchase, Store } from './api'
+import { plainText } from './lib/format'
 
 type Props = {
   token: string
@@ -165,7 +166,7 @@ export default function OpsPanel({ token, stores, onOpenArticle }: Props) {
   }
 
   function titleOf(a: Article) {
-    return a.current_version?.title || `記事 ${a.id.slice(0, 8)}…`
+    return plainText(a.current_version?.title) || `記事 ${a.id.slice(0, 8)}…`
   }
 
   async function saveWordpress() {

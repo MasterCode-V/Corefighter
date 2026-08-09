@@ -11,6 +11,8 @@ import {
 } from '../api'
 import {
   formatJaDate,
+  plainText,
+  shortStoreName,
   statusBadgeClass,
   statusLabel,
   STATUS_FILTER_OPTIONS,
@@ -171,7 +173,7 @@ export default function ArticleListPage({
                 disabled={!isAdmin}
                 title={`${s.store_name} — 公開済み ${s.published}件 / 未公開 ${s.draft}件`}
               >
-                <span className="cf-storechip__name">{s.store_name}</span>
+                <span className="cf-storechip__name">{shortStoreName(s.store_name)}</span>
                 <span className="cf-storechip__counts">
                   <span className="cf-badge cf-badge--red">{s.published}</span>
                   <span className="cf-badge cf-badge--gray">{s.draft}</span>
@@ -301,7 +303,11 @@ export default function ArticleListPage({
               <article className="cf-card" key={item.id}>
                 <div className="cf-card__thumb">
                   {item.thumbnail_url ? (
-                    <img src={item.thumbnail_url} alt={item.title || 'メイン画像'} loading="lazy" />
+                    <img
+                      src={item.thumbnail_url}
+                      alt={plainText(item.title) || 'メイン画像'}
+                      loading="lazy"
+                    />
                   ) : (
                     'メイン画像'
                   )}
@@ -311,14 +317,20 @@ export default function ArticleListPage({
                     <span className={statusBadgeClass(item.status)}>
                       {statusLabel(item.status)}
                     </span>
-                    <span className="cf-badge cf-badge--navyline">{item.store_name}</span>
+                    <span className="cf-badge cf-badge--navyline" title={item.store_name}>
+                      {shortStoreName(item.store_name)}
+                    </span>
                   </div>
                   <div className="cf-card__line">
                     メーカー：{item.manufacturer || '—'}
                     {item.model_number ? `　${item.model_number}` : ''}
                   </div>
                   <div className="cf-card__line">商品数：{item.product_count}点</div>
-                  {item.title && <div className="cf-card__title">{item.title}</div>}
+                  {item.title && (
+                    <div className="cf-card__title" title={plainText(item.title)}>
+                      {plainText(item.title)}
+                    </div>
+                  )}
                   <div className="cf-card__rule" />
                   <div className="cf-card__meta">更新日：{formatJaDate(item.updated_at)}</div>
                   <div className="cf-card__actions">
@@ -357,7 +369,11 @@ export default function ArticleListPage({
       </div>
 
       {preview && (
-        <Modal title={preview.current_version?.title || '記事プレビュー'} onClose={() => setPreview(null)} wide>
+        <Modal
+          title={plainText(preview.current_version?.title) || '記事プレビュー'}
+          onClose={() => setPreview(null)}
+          wide
+        >
           {preview.published_url && (
             <p style={{ marginTop: -6 }}>
               <a href={preview.published_url} target="_blank" rel="noreferrer">
@@ -394,7 +410,7 @@ export default function ArticleListPage({
       {pendingDelete && (
         <ConfirmDialog
           title="記事を削除しますか？"
-          message={`「${pendingDelete.title || pendingDelete.manufacturer || '無題の記事'}」と、紐づく買取データ・画像を削除します。WordPress に公開済みの投稿は削除されません。`}
+          message={`「${plainText(pendingDelete.title) || pendingDelete.manufacturer || '無題の記事'}」と、紐づく買取データ・画像を削除します。WordPress に公開済みの投稿は削除されません。`}
           onConfirm={confirmDelete}
           onCancel={() => setPendingDelete(null)}
           busy={deleting}
