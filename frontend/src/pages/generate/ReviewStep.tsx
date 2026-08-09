@@ -48,10 +48,9 @@ export default function ReviewStep({
         />
 
         {missingNameIndexes.length > 0 && (
-          <Banner kind="error">
-            記事をまだ生成できません。理由：商品
-            {missingNameIndexes.join('・')}
-            の商品名が空です。画像解析で取れなかった場合は手入力してください（画像のみでも、商品名があれば生成できます）。
+          <Banner kind="info">
+            商品{missingNameIndexes.join('・')}
+            の商品名が空です。このまま生成すると「買取商品」として進めます。分かっている場合は手入力してください。
           </Banner>
         )}
 
@@ -217,17 +216,7 @@ export default function ReviewStep({
         >
           基本情報へ戻る
         </button>
-        <button
-          type="button"
-          className="cf-cta"
-          onClick={onGenerate}
-          disabled={busy || missingNameIndexes.length > 0}
-          title={
-            missingNameIndexes.length
-              ? `商品名が未入力のため生成できません（商品${missingNameIndexes.join('・')}）`
-              : undefined
-          }
-        >
+        <button type="button" className="cf-cta" onClick={onGenerate} disabled={busy}>
           <span className="cf-cta__gold" />
           <span className="cf-cta__body">{busy ? '生成中…' : 'この内容で記事を生成'}</span>
           <span className="cf-cta__red" />

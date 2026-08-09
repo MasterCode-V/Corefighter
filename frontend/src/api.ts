@@ -322,17 +322,34 @@ export async function uploadImage(
   sortOrder = 0,
   productIndex?: number,
 ) {
-  const form = new FormData()
-  form.append('file', file)
-  form.append('image_type', imageType)
-  form.append('sort_order', String(sortOrder))
-  if (productIndex !== undefined) form.append('product_index', String(productIndex))
-  const res = await fetch(`${API}/purchases/${purchaseId}/images`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: form,
-  })
-  return parse<PurchaseImage>(res)
+  // Retry: nginx keep-alive desync occasionally returns a body-less 400
+  // right after createPurchase; a fresh connection usually succeeds.
+  let lastError: unknown
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('image_type', imageType)
+    form.append('sort_order', String(sortOrder))
+    if (productIndex !== undefined) form.append('product_index', String(productIndex))
+    try {
+      const res = await fetch(`${API}/purchases/${purchaseId}/images`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      })
+      if (!res.ok && res.status === 400 && attempt < 3) {
+        await res.text().catch(() => undefined)
+        await new Promise((r) => setTimeout(r, 250 * attempt))
+        continue
+      }
+      return parse<PurchaseImage>(res)
+    } catch (err) {
+      lastError = err
+      if (attempt >= 3) break
+      await new Promise((r) => setTimeout(r, 250 * attempt))
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('画像のアップロードに失敗しました')
 }
 
 export async function deletePurchaseImage(token: string, purchaseId: string, imageId: string) {

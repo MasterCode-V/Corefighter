@@ -254,16 +254,14 @@ export default function GeneratePage({
   const syncPurchase = useCallback(
     async (): Promise<Purchase> => {
       if (!storeId) throw new Error('保存できません。理由：掲載店舗が未選択です')
-      if (areaIsManual(form.purchase_method) && !form.purchase_area.trim()) {
-        throw new Error(
-          '保存できません。理由：出張・宅配では買取地区が必要です（例：札幌市白石区）',
-        )
-      }
+      // Product fields may be empty — AI fills them after image analysis.
+      const area =
+        form.purchase_area.trim() || (areaIsManual(form.purchase_method) ? '' : '—')
       const payload = {
         persona_id: personaId || null,
         purchase_date: form.purchase_date || undefined,
         purchase_method: form.purchase_method || undefined,
-        purchase_area: form.purchase_area.trim() || undefined,
+        purchase_area: area || undefined,
         products: productsPayload(),
       }
 
@@ -273,6 +271,7 @@ export default function GeneratePage({
       } else {
         current = await createPurchase(token, { store_id: storeId, ...payload })
         pushLog(`買取データ ${current.id.slice(0, 8)}… を作成しました`)
+        await new Promise((r) => setTimeout(r, 150))
       }
 
       let order = current.images.length
@@ -319,12 +318,6 @@ export default function GeneratePage({
     setNotice('')
     if (!storeId) {
       setError('画像解析できません。理由：掲載店舗が未選択です。店舗を選んでから実行してください。')
-      return
-    }
-    if (areaIsManual(form.purchase_method) && !form.purchase_area.trim()) {
-      setError(
-        '画像解析できません。理由：出張・宅配では買取地区が必要です（例：札幌市白石区）。',
-      )
       return
     }
     const hasImages =
@@ -376,21 +369,15 @@ export default function GeneratePage({
       )
       return
     }
-    const missingNames = products
-      .map((p, i) => ({ i, name: p.product_name.trim() }))
-      .filter((p) => !p.name)
-    if (missingNames.length) {
-      const labels = missingNames.map((p) => `商品${p.i + 1}`).join('・')
-      setError(
-        `記事を生成できません。理由：${labels}の商品名が未入力です。画像から読み取れなかった場合は手入力してください。`,
-      )
-      return
-    }
-    if (areaIsManual(form.purchase_method) && !form.purchase_area.trim()) {
-      setError(
-        '記事を生成できません。理由：出張・宅配では買取地区が必要です（例：札幌市白石区）。',
-      )
-      return
+    // Empty AI fields are OK — fill a safe fallback so generation can proceed.
+    const normalized = products.map((p, index) => ({
+      ...p,
+      product_name: p.product_name.trim() || `買取商品${products.length > 1 ? index + 1 : ''}`.trim(),
+      quantity: p.quantity || '1',
+      quantity_unit: p.quantity_unit.trim() || '点',
+    }))
+    if (normalized.some((p, i) => p.product_name !== products[i].product_name)) {
+      setProducts(normalized)
     }
     setError('')
     setNotice('')
@@ -403,7 +390,15 @@ export default function GeneratePage({
         purchase_date: form.purchase_date || undefined,
         purchase_method: form.purchase_method || undefined,
         purchase_area: form.purchase_area || undefined,
-        products: productsPayload(),
+        products: normalized.map((p, index) => ({
+          sort_order: index,
+          manufacturer: p.manufacturer.trim() || undefined,
+          product_name: p.product_name.trim(),
+          model_number: p.model_number.trim() || undefined,
+          condition: p.condition.trim() || undefined,
+          quantity: Number(p.quantity) > 0 ? Number(p.quantity) : 1,
+          quantity_unit: p.quantity_unit.trim() || '点',
+        })),
       })
       pushLog('記事生成ジョブを開始しました')
       setJobStatus('QUEUED')
