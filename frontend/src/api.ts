@@ -94,8 +94,12 @@ export type ArticleVersion = {
 export type Article = {
   id: string
   purchase_id: string
+  store_id?: string
   status: string
   latest_similarity_score: number | null
+  wordpress_post_id?: number | null
+  published_url?: string | null
+  review_note?: string | null
   current_version: ArticleVersion | null
 }
 
@@ -325,6 +329,220 @@ export async function getRelatedPosts(token: string, articleId: string, limit = 
     headers: authHeaders(token),
   })
   return parse<RelatedPost[]>(res)
+}
+
+export async function getWaitingList(token: string) {
+  const res = await fetch(`${API}/articles/waiting-list`, { headers: authHeaders(token) })
+  return parse<Article[]>(res)
+}
+
+export async function listArticlesByStatus(token: string, status?: string, limit = 50) {
+  const q = status ? `?status=${encodeURIComponent(status)}&limit=${limit}` : `?limit=${limit}`
+  const res = await fetch(`${API}/articles${q}`, { headers: authHeaders(token) })
+  return parse<Article[]>(res)
+}
+
+export async function submitForApproval(token: string, articleId: string, note?: string) {
+  const res = await fetch(`${API}/approval/${articleId}/submit`, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify({ note: note || null }),
+  })
+  return parse<Article>(res)
+}
+
+export async function listPendingApprovals(token: string) {
+  const res = await fetch(`${API}/approval/pending`, { headers: authHeaders(token) })
+  return parse<Article[]>(res)
+}
+
+export async function approvalDecision(
+  token: string,
+  articleId: string,
+  decision: 'approve' | 'return' | 'hold' | 'reject',
+  note?: string,
+) {
+  const res = await fetch(`${API}/approval/${articleId}/decision`, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify({ decision, note: note || null }),
+  })
+  return parse<Article>(res)
+}
+
+export async function publishArticle(token: string, articleId: string) {
+  const res = await fetch(`${API}/wordpress/${articleId}/publish`, {
+    method: 'POST',
+    headers: authHeaders(token),
+  })
+  return parse<{ job_id: string; job_type: string; status: string }>(res)
+}
+
+export async function listWordpressCategories(token: string, productOnly = true) {
+  const q = productOnly ? '?product_only=true' : '?product_only=false'
+  const res = await fetch(`${API}/wordpress/categories${q}`, { headers: authHeaders(token) })
+  return parse<Array<{ id: number; name: string; is_product: boolean }>>(res)
+}
+
+export async function createWordpressDraft(token: string, articleId: string) {
+  const res = await fetch(`${API}/wordpress/${articleId}/draft`, {
+    method: 'POST',
+    headers: authHeaders(token),
+  })
+  return parse<{ job_id: string; job_type: string; status: string }>(res)
+}
+
+export async function retryWordpress(
+  token: string,
+  articleId: string,
+  jobType = 'WORDPRESS_PUBLISH',
+) {
+  const res = await fetch(
+    `${API}/wordpress/${articleId}/retry?job_type=${encodeURIComponent(jobType)}`,
+    { method: 'POST', headers: authHeaders(token) },
+  )
+  return parse<{ job_id: string; job_type: string; status: string }>(res)
+}
+
+export async function syncWordpressCorpus(token: string) {
+  const res = await fetch(`${API}/wordpress/sync`, {
+    method: 'POST',
+    headers: authHeaders(token),
+  })
+  return parse<{ job_id: string; job_type: string; status: string }>(res)
+}
+
+export async function regenerateArticle(
+  token: string,
+  articleId: string,
+  instruction?: string,
+) {
+  const res = await fetch(`${API}/articles/${articleId}/regenerate`, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify({ scope: 'FULL', instruction: instruction || null }),
+  })
+  return parse<{ job_id: string; job_type: string; status: string }>(res)
+}
+
+export type DashboardSummary = {
+  articles_by_status: Record<string, number>
+  purchases_by_status: Record<string, number>
+  jobs_by_status: Record<string, number>
+  waiting_approval: number
+  waiting_list: number
+  published: number
+  failed_jobs: number
+}
+
+export async function getDashboardSummary(token: string) {
+  const res = await fetch(`${API}/dashboard/summary`, { headers: authHeaders(token) })
+  return parse<DashboardSummary>(res)
+}
+
+export async function getDashboardLogs(token: string, limit = 40) {
+  const res = await fetch(`${API}/dashboard/logs?limit=${limit}`, {
+    headers: authHeaders(token),
+  })
+  return parse<
+    Array<{
+      id: string
+      level: string
+      category: string
+      message: string
+      created_at: string
+    }>
+  >(res)
+}
+
+export async function getRecentJobs(token: string, limit = 20) {
+  const res = await fetch(`${API}/dashboard/recent-jobs?limit=${limit}`, {
+    headers: authHeaders(token),
+  })
+  return parse<Job[]>(res)
+}
+
+export async function listPurchases(token: string, limit = 50) {
+  const res = await fetch(`${API}/purchases?limit=${limit}`, { headers: authHeaders(token) })
+  return parse<Purchase[]>(res)
+}
+
+export async function searchArticles(
+  token: string,
+  opts: { status?: string; search?: string; storeId?: string; limit?: number } = {},
+) {
+  const q = new URLSearchParams()
+  if (opts.status) q.set('status', opts.status)
+  if (opts.search) q.set('search', opts.search)
+  if (opts.storeId) q.set('store_id', opts.storeId)
+  q.set('limit', String(opts.limit ?? 50))
+  const res = await fetch(`${API}/articles?${q}`, { headers: authHeaders(token) })
+  return parse<Article[]>(res)
+}
+
+export async function triggerSimilarityCheck(token: string, articleId: string) {
+  const res = await fetch(`${API}/articles/${articleId}/similarity-check`, {
+    method: 'POST',
+    headers: authHeaders(token),
+  })
+  return parse<{ job_id: string; job_type: string; status: string }>(res)
+}
+
+export async function updateWordpressSite(
+  token: string,
+  siteId: string,
+  data: {
+    name?: string
+    base_url?: string
+    username?: string
+    app_password?: string
+    default_category_id?: number | null
+    default_author_id?: number | null
+    is_active?: boolean
+  },
+) {
+  const res = await fetch(`${API}/stores/wordpress/${siteId}`, {
+    method: 'PATCH',
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  })
+  return parse<Record<string, unknown>>(res)
+}
+
+export async function createWordpressSite(
+  token: string,
+  storeId: string,
+  data: {
+    name?: string
+    base_url: string
+    username: string
+    app_password: string
+    default_category_id?: number | null
+    default_author_id?: number | null
+  },
+) {
+  const res = await fetch(`${API}/stores/${storeId}/wordpress`, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  })
+  return parse<Record<string, unknown>>(res)
+}
+
+export async function listWordpressSites(token: string, storeId: string) {
+  const res = await fetch(`${API}/stores/${storeId}/wordpress`, {
+    headers: authHeaders(token),
+  })
+  return parse<
+    Array<{
+      id: string
+      store_id: string
+      name: string
+      base_url: string
+      username: string
+      is_active: boolean
+    }>
+  >(res)
 }
 
 export async function pollJob(

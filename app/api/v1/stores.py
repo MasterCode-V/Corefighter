@@ -29,7 +29,7 @@ TEMPLATE_KEYS = {
     "label", "area", "title_prefix", "title_suffix",
     "heading_prefix", "heading_suffix", "thanks_text", "thanks_color",
     "persona_intro", "many_threshold", "phone_general", "phone_dispatch",
-    "footer_html", "style",
+    "line_url", "footer_html", "style",
 }
 
 
@@ -43,6 +43,7 @@ class ArticleTemplateUpdate(BaseModel):
     persona_intro: str | None = None
     phone_general: str | None = None
     phone_dispatch: str | None = None
+    line_url: str | None = None
     footer_html: str | None = None
 
 
@@ -142,7 +143,7 @@ async def create_wp_site(
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
     data = body.model_dump()
-    app_password = data.pop("app_password")
+    app_password = data.pop("app_password").replace(" ", "")
     site = WordPressSite(
         store_id=store_id,
         encrypted_app_password=encrypt_secret(app_password),
@@ -164,7 +165,7 @@ async def update_wp_site(
         raise HTTPException(status_code=404, detail="WordPress site not found")
     data = body.model_dump(exclude_unset=True)
     if data.get("app_password"):
-        site.encrypted_app_password = encrypt_secret(data.pop("app_password"))
+        site.encrypted_app_password = encrypt_secret(data.pop("app_password").replace(" ", ""))
     else:
         data.pop("app_password", None)
     for key, value in data.items():

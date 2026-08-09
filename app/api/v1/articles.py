@@ -164,14 +164,21 @@ async def edit_article(
         )
         purchase = pres.scalar_one_or_none()
         main_url = None
-        if purchase and purchase.images:
-            images = sorted(
-                purchase.images,
-                key=lambda i: (i.image_type != ImageType.ARTICLE, i.sort_order),
-            )
-            main_url = images[0].url
+        product_line = None
+        if purchase:
+            if purchase.images:
+                images = sorted(
+                    purchase.images,
+                    key=lambda i: (i.image_type != ImageType.ARTICLE, i.sort_order),
+                )
+                main_url = images[0].url
+            product_line = article_template.build_product_line(cfg, purchase)
         merged["rendered_html"] = article_template.assemble_html(
-            cfg, heading, merged["body"], main_image_url=main_url
+            cfg,
+            heading,
+            merged["body"],
+            main_image_url=main_url,
+            product_line=product_line,
         )
 
     await article_service.create_version(db, article, data=merged, is_manual_edit=True)

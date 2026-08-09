@@ -118,8 +118,11 @@ BUYERSBOX_JSON_SCHEMA = (
     "Respond ONLY with JSON using exactly these keys:\n"
     "body (string: HTML of <p> paragraphs only; may include <strong> and emoji; "
     "NO <h1>, <h2>, phone numbers, store addresses, LINE links, or VVF/footer blocks),\n"
-    "excerpt (string, <=80 Japanese chars, one soft CTA sentence),\n"
-    "category_suggestion (string: one Japanese category noun, e.g. カーナビ / 電動工具 / 電線),\n"
+    "excerpt (string, 60-120 Japanese chars: include product name + store/area + "
+    "買取 CTA; this becomes the SEO meta description),\n"
+    "category_suggestion (string: one or more names from the allowed WordPress "
+    "product category list, joined with Japanese comma 「、」 "
+    "e.g. 建材、ペアコイル),\n"
     "tag_suggestions (array of 3-6 Japanese strings: maker, product type, store area)."
 )
 
@@ -199,7 +202,9 @@ def build_buyersbox_system_prompt(cfg: dict, persona: Optional[Persona]) -> str:
         "出力は日本語のみ。口調・長さ・絵文字量は実店舗の公開記事に合わせます。",
         "",
         "## 文体ルール（厳守）",
-        "- 短文・1段落あたり1〜3文。全文でおおむね 350〜650字（HTMLタグ除く）。",
+        "- 短文・1段落あたり1〜3文。本文はおおむね 450〜800字（HTMLタグ除く・フッター除く）。",
+        "- 商品名＋「買取」を本文中に自然に2回以上入れる（SEO）。",
+        "- 店舗エリア（例：札幌市豊平区）と店舗名を締めの段落で1回入れる。",
         "- 「です・ます」調。馴れ馴れしくても誇大表現・虚假のスペックは禁止。",
         "- 絵文字は段落あたり最大1〜2個。並べすぎない。",
         "- 商品名・型番は入力どおり正確に。推測で型番を作らない。不明なら書かない。",
@@ -391,6 +396,17 @@ def build_buyersbox_user_prompt(
     if previous_body:
         lines.append("\n## 前回本文（丸写し禁止・差異を出せ）")
         lines.append(previous_body[:2500])
+
+    from app.services.wordpress_categories import allowed_category_prompt_list
+
+    lines.append("\n## 許可された WordPress カテゴリー（category_suggestion）")
+    lines.append(allowed_category_prompt_list())
+    lines.append(
+        "category_suggestion には上のリストから1つ以上を「、」区切りで入れること"
+        "（例: 建材、ペアコイル / 工具、中古電動工具）。"
+        "購入・解析で指定されたカテゴリーがあればそれを優先。"
+        "EXPERIENCE / NEWS は選ばない（システム側で EXPERIENCE を自動付与する）。"
+    )
 
     lines.append("\n" + BUYERSBOX_JSON_SCHEMA)
     return "\n".join(lines)

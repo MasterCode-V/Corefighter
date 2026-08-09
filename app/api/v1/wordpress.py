@@ -15,6 +15,10 @@ from app.integrations.wordpress_client import WordPressClient, WordPressError
 from app.models import Article, SimilarityResult, WordPressSite
 from app.schemas.job import JobCreatedResponse
 from app.services import job_service
+from app.services.wordpress_categories import (
+    PRODUCT_CATEGORY_NAMES,
+    WORDPRESS_CATEGORIES,
+)
 
 router = APIRouter()
 ArqDep = Annotated[ArqRedis, Depends(get_arq)]
@@ -27,6 +31,28 @@ class RelatedPost(BaseModel):
     date: str = ""
     thumbnail: Optional[str] = None
     score: Optional[float] = None
+
+
+class WordpressCategory(BaseModel):
+    id: int
+    name: str
+    is_product: bool = True
+
+
+@router.get("/categories", response_model=List[WordpressCategory])
+async def list_wordpress_categories(
+    current_user: CurrentUser,
+    product_only: bool = Query(True),
+) -> List[WordpressCategory]:
+    """Return the buyersbox WordPress category catalog used for article posting."""
+    rows: List[WordpressCategory] = []
+    product_set = set(PRODUCT_CATEGORY_NAMES)
+    for row in WORDPRESS_CATEGORIES:
+        is_product = row["name"] in product_set
+        if product_only and not is_product:
+            continue
+        rows.append(WordpressCategory(id=row["id"], name=row["name"], is_product=is_product))
+    return rows
 
 
 async def _resolve_site(db, article: Article) -> Optional[WordPressSite]:
@@ -75,6 +101,40 @@ async def related_posts(
     except WordPressError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return [RelatedPost(**item) for item in client.normalize_related(raw)]
+
+
+@router.post("/{article_id}/draft", response_model=JobCreatedResponse,
+             status_code=status.HTTP_202_ACCEPTED, dependencies=[Depends(require_admin)])
+async def create_wordpress_draft(
+    db: DBSession, current_user: CurrentUser, arq: ArqDep, article_id: uuid.UUID
+) -> JobCreatedResponse:
+    """Enqueue WORDPRESS_DRAFT for an approved / returned / error article.
+
+    Useful when the automatic draft job after approval failed, or to re-push
+    content to WordPress as a draft without going through publish.
+    """
+    article = await db.get(Article, article_id)
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    if article.status not in (
+        ArticleStatus.APPROVED,
+        ArticleStatus.WORDPRESS_DRAFT,
+        ArticleStatus.WORDPRESS_ERROR,
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot create WordPress draft from status {article.status.value}",
+        )
+    site = await _resolve_site(db, article)
+    if not site:
+        raise HTTPException(status_code=400, detail="No WordPress site configured for this store")
+
+    job = await job_service.create_job(
+        db, arq, job_type=JobType.WORDPRESS_DRAFT,
+        article_id=article.id, created_by=current_user.id,
+    )
+    await db.commit()
+    return JobCreatedResponse(job_id=job.id, job_type=job.job_type, status=job.status)
 
 
 @router.post("/{article_id}/publish", response_model=JobCreatedResponse,

@@ -1,6 +1,7 @@
 """Workflows 11-15: WordPress draft, update, publish and corpus sync."""
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -9,6 +10,7 @@ from dateutil import parser as date_parser
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from app.core.logging import get_logger
 from app.core.security import decrypt_secret
 from app.core.storage import storage
 from app.enums import ArticleStatus, ImageType
@@ -25,6 +27,13 @@ from app.models import (
     WordPressSite,
 )
 from app.services import text_utils
+from app.services.wordpress_categories import (
+    EXPERIENCE_CATEGORY_ID,
+    category_id_for_name,
+    resolve_category_ids,
+)
+
+logger = get_logger("wordpress")
 
 
 async def _resolve_site(db, article: Article) -> WordPressSite:
@@ -70,51 +79,160 @@ def _render_content(version: ArticleVersion) -> str:
 
 async def _upload_featured_image(
     db, article: Article, client: WordPressClient
-) -> tuple[Optional[int], Optional[str], Optional[str]]:
-    """Returns (wp_media_id, wp_source_url, local_url) for the main image."""
+) -> tuple[int, str, Optional[str]]:
+    """Returns (wp_media_id, wp_source_url, local_url) for the main image.
+
+    Featured image is required for the live EXPERIENCE / store grid. Missing
+    MinIO media or WP upload failure must fail the job so we never publish a
+    post that cannot appear in the malls list.
+    """
     result = await db.execute(
         select(Purchase).options(selectinload(Purchase.images)).where(Purchase.id == article.purchase_id)
     )
     purchase = result.scalar_one_or_none()
     if not purchase or not purchase.images:
-        return None, None, None
+        raise ValueError(
+            "No purchase image found — featured image is required for EXPERIENCE listing"
+        )
     images = sorted(purchase.images, key=lambda i: (i.image_type != ImageType.ARTICLE, i.sort_order))
     main = images[0]
-    data = await storage.download_bytes(main.storage_key)
-    media = await client.upload_media(data, main.filename or "image.jpg", main.content_type)
+    try:
+        data = await storage.download_bytes(main.storage_key)
+        media = await client.upload_media(data, main.filename or "image.jpg", main.content_type)
+    except Exception as exc:
+        raise ValueError(
+            f"Featured image upload failed ({main.storage_key}): {exc}. "
+            "MinIO must be running and the image key must exist."
+        ) from exc
     main.wordpress_media_id = media["id"]
     await db.flush()
-    return media["id"], media.get("source_url"), main.url
+    source_url = media.get("source_url") or ""
+    if not source_url:
+        raise ValueError("WordPress media upload returned no source_url")
+    return media["id"], source_url, main.url
+
+
+def _inject_wp_featured_image(
+    content: str,
+    *,
+    local_url: Optional[str],
+    wp_url: Optional[str],
+    media_id: Optional[int],
+) -> str:
+    """Rewrite the inline main image to match live EXPERIENCE markup.
+
+    Manual posts use ``<img class="wp-image-N … aligncenter" src="…wp-content…">``
+    (not a MinIO / figure wrapper). Prefer replacing our ``cf-main-image`` marker.
+    """
+    if not wp_url or not media_id:
+        return content
+
+    wp_img = (
+        f'<img src="{wp_url}" alt="" '
+        f'class="wp-image-{media_id} size-full aligncenter" />'
+    )
+    replaced, n = re.subn(
+        r'<img\b[^>]*class="[^"]*cf-main-image[^"]*"[^>]*/?>',
+        wp_img,
+        content,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+    if n:
+        return replaced
+
+    replaced, n = re.subn(
+        r'<figure\b[^>]*class="[^"]*cf-main-image[^"]*"[^>]*>.*?</figure>',
+        wp_img,
+        content,
+        count=1,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if n:
+        return replaced
+
+    if local_url and local_url in content:
+        return content.replace(local_url, wp_url)
+
+    # Relative media proxy paths (e.g. /api/v1/media/purchases/…)
+    replaced, n = re.subn(
+        r'<img\b[^>]*src="/api/v1/media/[^"]+"[^>]*/?>',
+        wp_img,
+        content,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+    return replaced if n else content
 
 
 async def _build_payload(db, article: Article, version: ArticleVersion, client: WordPressClient,
                          status: str) -> dict:
+    from app.services import article_template
+
     media_id, wp_url, local_url = await _upload_featured_image(db, article, client)
 
-    content = _render_content(version)
-    # Replace the local MinIO image URL with the uploaded WordPress URL so the
-    # published post shows an accessible image.
-    if local_url and wp_url and local_url in content:
-        content = content.replace(local_url, wp_url)
+    content = _inject_wp_featured_image(
+        _render_content(version),
+        local_url=local_url,
+        wp_url=wp_url,
+        media_id=media_id,
+    )
+
+    # Categories: always EXPERIENCE + any selected/suggested product categories
+    # (multiple allowed, e.g. EXPERIENCE + 建材 + ペアコイル).
+    purchase = await db.get(Purchase, article.purchase_id)
+    store = await db.get(Store, article.store_id) if article.store_id else None
+    cfg = article_template.resolve_config(store)
+    purchase_category = getattr(purchase, "category", None) if purchase else None
+
+    excerpt = article_template.build_excerpt(
+        cfg, purchase, ai_excerpt=version.excerpt
+    ) if purchase else (version.excerpt or "")
 
     payload: dict = {
         "title": version.title,
         "content": content,
-        "excerpt": version.excerpt,
+        "excerpt": excerpt,
         "status": status,
+        "featured_media": media_id,
     }
-    if version.category_suggestion:
+
+    cat_ids = resolve_category_ids(
+        purchase_category,
+        version.category_suggestion,
+        include_experience=True,
+    )
+    if not cat_ids:
+        cat_ids = [EXPERIENCE_CATEGORY_ID]
+    # Unknown AI suggestions: try resolve/create each token once.
+    from app.services.wordpress_categories import split_category_names
+
+    for name in split_category_names(version.category_suggestion):
+        if category_id_for_name(name) is not None:
+            continue
         try:
-            payload["categories"] = [await client.ensure_category(version.category_suggestion)]
-        except Exception:  # pragma: no cover - taxonomy is best effort
-            pass
-    if version.tag_suggestions:
-        try:
-            payload["tags"] = await client.ensure_tags(list(version.tag_suggestions))
+            extra = await client.ensure_category(name)
+            if extra not in cat_ids:
+                cat_ids.append(extra)
         except Exception:  # pragma: no cover
             pass
-    if media_id:
-        payload["featured_media"] = media_id
+    payload["categories"] = cat_ids
+
+    # Always attach store tag (+ makers) so the post appears under the store
+    # section on /experience (東苗穂店 / 豊平店 / 東米里店).
+    tag_names: list[str] = []
+    if purchase is not None:
+        for t in article_template.build_default_tags(cfg, purchase):
+            if t and t not in tag_names:
+                tag_names.append(t)
+    for t in version.tag_suggestions or []:
+        if t and t not in tag_names:
+            tag_names.append(t)
+    if tag_names:
+        try:
+            payload["tags"] = await client.ensure_tags(tag_names)
+        except Exception:  # pragma: no cover
+            logger.warning("Tag ensure failed for article %s", article.id, exc_info=True)
     return payload
 
 

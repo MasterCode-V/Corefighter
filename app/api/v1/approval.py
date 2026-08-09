@@ -6,6 +6,7 @@ from typing import Annotated
 from arq.connections import ArqRedis
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.core.deps import CurrentUser, DBSession, ensure_store_access, get_arq, require_admin
 from app.enums import ArticleStatus, JobType, UserRole
@@ -26,10 +27,20 @@ SUBMITTABLE = {
 
 
 async def _get_article(db, article_id: uuid.UUID) -> Article:
-    article = await db.get(Article, article_id)
+    result = await db.execute(
+        select(Article)
+        .options(selectinload(Article.current_version))
+        .where(Article.id == article_id)
+    )
+    article = result.scalar_one_or_none()
     if not article:
         raise HTTPException(status_code=404, detail="Article not found")
     return article
+
+
+async def _reload_article(db, article_id: uuid.UUID) -> Article:
+    """Re-load with relationships after commit (refresh alone drops lazy loads)."""
+    return await _get_article(db, article_id)
 
 
 @router.post("/{article_id}/submit", response_model=ArticleRead)
@@ -48,8 +59,7 @@ async def submit_for_approval(
     if body.note:
         article.review_note = body.note
     await db.commit()
-    await db.refresh(article)
-    return article
+    return await _reload_article(db, article_id)
 
 
 @router.post("/{article_id}/decision", response_model=ArticleRead,
@@ -87,14 +97,14 @@ async def approval_decision(
         raise HTTPException(status_code=400, detail="Invalid decision")
 
     await db.commit()
-    await db.refresh(article)
-    return article
+    return await _reload_article(db, article_id)
 
 
 @router.get("/pending", response_model=list[ArticleRead], dependencies=[Depends(require_admin)])
 async def pending_approvals(db: DBSession) -> list[Article]:
     result = await db.execute(
         select(Article)
+        .options(selectinload(Article.current_version))
         .where(Article.status == ArticleStatus.WAITING_APPROVAL)
         .order_by(Article.updated_at.desc())
     )

@@ -1,10 +1,16 @@
 """WordPress REST API client (workflows 11-15).
 
 Uses application passwords over HTTP Basic auth against the WP REST API v2.
+
+Note: Some hosts (including XSERVER) strip the Authorization header on
+``/wp-json/...`` pretty permalinks. We therefore call REST via
+``/?rest_route=/wp/v2/...`` which preserves Basic auth.
 """
 from __future__ import annotations
 
+import base64
 from typing import Any, List, Optional
+from urllib.parse import parse_qsl, urlencode
 
 import httpx
 
@@ -20,16 +26,50 @@ class WordPressError(Exception):
 class WordPressClient:
     def __init__(self, base_url: str, username: str, app_password: str) -> None:
         self._base = base_url.rstrip("/")
-        self._auth = (username, app_password)
+        # Application passwords are often copied with spaces; WordPress accepts either.
+        self._username = username
+        self._password = app_password.replace(" ", "")
+        self._headers = {
+            "User-Agent": "CORE-FIGHTER/1.0 (+https://github.com/MasterCode-V/Corefighter)",
+            "Accept": "application/json",
+        }
 
-    @property
-    def _api(self) -> str:
-        return f"{self._base}/wp-json/wp/v2"
+    def _auth_headers(self) -> dict[str, str]:
+        token = base64.b64encode(f"{self._username}:{self._password}".encode()).decode()
+        return {"Authorization": f"Basic {token}"}
+
+    def _rest_url(self, route: str, query: Optional[dict[str, Any]] = None) -> str:
+        """Build ``/?rest_route=/wp/v2/...`` (or another namespace) URL."""
+        if not route.startswith("/"):
+            route = "/" + route
+        params: dict[str, Any] = {"rest_route": route}
+        if query:
+            params.update({k: v for k, v in query.items() if v is not None})
+        return f"{self._base}/?{urlencode(params, doseq=True)}"
+
+    def _wp_v2_url(self, path: str) -> str:
+        """Convert a path like ``/posts/1?context=edit`` into a rest_route URL."""
+        if path.startswith("http"):
+            return path
+        if not path.startswith("/"):
+            path = "/" + path
+        route_path = path
+        query: dict[str, Any] = {}
+        if "?" in path:
+            route_path, qs = path.split("?", 1)
+            for key, value in parse_qsl(qs, keep_blank_values=True):
+                query[key] = value
+        return self._rest_url(f"/wp/v2{route_path}", query)
 
     async def _request(self, method: str, path: str, **kwargs) -> Any:
-        url = path if path.startswith("http") else f"{self._api}{path}"
+        url = path if path.startswith("http") else self._wp_v2_url(path)
+        headers = {
+            **self._headers,
+            **self._auth_headers(),
+            **(kwargs.pop("headers", {}) or {}),
+        }
         async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.request(method, url, auth=self._auth, **kwargs)
+            resp = await client.request(method, url, headers=headers, **kwargs)
         if resp.status_code >= 400:
             raise WordPressError(
                 f"WordPress {method} {path} failed: {resp.status_code} {resp.text[:500]}"
@@ -69,16 +109,39 @@ class WordPressClient:
         }
         if modified_after:
             params["modified_after"] = modified_after
-        url = f"{self._api}/posts"
+        url = self._rest_url("/wp/v2/posts", params)
+        headers = {**self._headers, **self._auth_headers()}
         async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.get(url, auth=self._auth, params=params)
+            resp = await client.get(url, headers=headers)
         if resp.status_code >= 400:
             raise WordPressError(f"list_posts failed: {resp.status_code} {resp.text[:300]}")
         total_pages = int(resp.headers.get("X-WP-TotalPages", 1))
         return resp.json(), total_pages
 
     # ---- Taxonomy ----
+    async def list_categories(self, hide_empty: bool = False) -> list[dict]:
+        page = 1
+        all_rows: list[dict] = []
+        while True:
+            flag = "true" if hide_empty else "false"
+            rows = await self._request(
+                "GET", f"/categories?per_page=100&page={page}&hide_empty={flag}"
+            )
+            if not rows:
+                break
+            all_rows.extend(rows)
+            if len(rows) < 100:
+                break
+            page += 1
+        return all_rows
+
     async def ensure_category(self, name: str) -> int:
+        # Prefer known buyersbox catalog IDs to avoid creating duplicates.
+        from app.services.wordpress_categories import category_id_for_name
+
+        known = category_id_for_name(name)
+        if known is not None:
+            return known
         existing = await self._request("GET", f"/categories?search={name}")
         for cat in existing or []:
             if cat.get("name", "").lower() == name.lower():
@@ -106,16 +169,13 @@ class WordPressClient:
     async def get_related_posts(self, post_id: int, limit: int = 4) -> List[dict]:
         """Fetch the related posts YARPP computes for a given post.
 
-        Endpoint: GET /wp-json/yarpp/v1/related/{id}
-        Requires "Display related posts in REST API" enabled in YARPP settings.
-        Returns the same posts (quantity/order) shown on the live site.
+        Prefers rest_route form so Authorization survives host proxies.
         """
-        url = f"{self._base}/wp-json/yarpp/v1/related/{post_id}"
-        params = {"limit": limit, "_embed": "1"}
+        url = self._rest_url(f"/yarpp/v1/related/{post_id}", {"limit": limit, "_embed": "1"})
+        headers = {**self._headers, **self._auth_headers()}
         async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.get(url, auth=self._auth, params=params)
+            resp = await client.get(url, headers=headers)
         if resp.status_code == 404:
-            # No related posts, or YARPP REST not enabled / post not found.
             return []
         if resp.status_code >= 400:
             raise WordPressError(

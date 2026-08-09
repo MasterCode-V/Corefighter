@@ -80,10 +80,24 @@ async def _generate(db, job: Job, ctx, *, regeneration: bool) -> dict:
 
     title = article_template.build_title(cfg, purchase)
     heading = article_template.build_heading(cfg)
+    product_line = article_template.build_product_line(cfg, purchase)
     ai_body = generated.get("body", "")
     rendered_html = article_template.assemble_html(
-        cfg, heading, ai_body, main_image_url=_main_image_url(purchase)
+        cfg,
+        heading,
+        ai_body,
+        main_image_url=_main_image_url(purchase),
+        product_line=product_line,
     )
+
+    # Live EXPERIENCE posts tag the store + maker; merge AI tags on top.
+    tags: list[str] = []
+    for t in article_template.build_default_tags(cfg, purchase):
+        if t and t not in tags:
+            tags.append(t)
+    for t in generated.get("tag_suggestions", []) or []:
+        if t and t not in tags:
+            tags.append(t)
 
     data = {
         "title": title,
@@ -91,9 +105,11 @@ async def _generate(db, job: Job, ctx, *, regeneration: bool) -> dict:
         "headings": [{"heading": heading, "content": ""}],
         "body": ai_body,                 # variable part only (similarity target)
         "rendered_html": rendered_html,  # full article for WordPress / preview
-        "excerpt": generated.get("excerpt", ""),
+        "excerpt": article_template.build_excerpt(
+            cfg, purchase, ai_excerpt=generated.get("excerpt", ""),
+        ),
         "category_suggestion": generated.get("category_suggestion") or purchase.category,
-        "tag_suggestions": generated.get("tag_suggestions", []) or [],
+        "tag_suggestions": tags,
     }
 
     version = await article_service.create_version(

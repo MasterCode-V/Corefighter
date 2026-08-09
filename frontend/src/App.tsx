@@ -11,14 +11,17 @@ import {
   listArticles,
   listPersonas,
   listStores,
+  listWordpressCategories,
   login,
   me,
   pollJob,
+  submitForApproval,
   updateArticleTemplate,
   updatePurchase,
   uploadImage,
 } from './api'
 import type { Article, Persona, Product, Purchase, RelatedPost, Store, User } from './api'
+import OpsPanel from './OpsPanel'
 
 function toProxy(html: string) {
   return html.replace(
@@ -48,6 +51,17 @@ function todayIso() {
   const d = new Date()
   const off = d.getTimezoneOffset()
   return new Date(d.getTime() - off * 60000).toISOString().slice(0, 10)
+}
+
+function splitCats(value?: string | null) {
+  return (value || '')
+    .split(/[,、/|；;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+function joinCats(names: string[]) {
+  return names.join('、')
 }
 
 /** 記事への追加指示（チェックで選べるネタ） */
@@ -153,6 +167,7 @@ export default function App() {
   const [email, setEmail] = useState('admin@corefighter.local')
   const [password, setPassword] = useState('admin12345')
   const [stores, setStores] = useState<Store[]>([])
+  const [wpCategories, setWpCategories] = useState<Array<{ id: number; name: string }>>([])
   const [personas, setPersonas] = useState<Persona[]>([])
   const [storeId, setStoreId] = useState('')
   const [personaId, setPersonaId] = useState('')
@@ -178,6 +193,7 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [step, setStep] = useState<Step>('input')
+  const [uiMode, setUiMode] = useState<'generate' | 'ops'>('generate')
   const [log, setLog] = useState<string[]>([])
   const [editing, setEditing] = useState(false)
   const [advanced, setAdvanced] = useState(false)
@@ -189,6 +205,7 @@ export default function App() {
     rendered_html: '',
     excerpt: '',
     tags: '',
+    category_suggestion: '',
   })
   const [tplOpen, setTplOpen] = useState(false)
   const [tpl, setTpl] = useState({
@@ -229,9 +246,14 @@ export default function App() {
       try {
         const u = await me(token)
         setUser(u)
-        const [s, p] = await Promise.all([listStores(token), listPersonas(token)])
+        const [s, p, cats] = await Promise.all([
+          listStores(token),
+          listPersonas(token),
+          listWordpressCategories(token, true).catch(() => []),
+        ])
         setStores(s)
         setPersonas(p)
+        setWpCategories(cats)
         if (s[0]) setStoreId(u.store_id || s[0].id)
         if (p[0]) setPersonaId(p[0].id)
       } catch (e) {
@@ -499,6 +521,7 @@ export default function App() {
       rendered_html: v.rendered_html || '',
       excerpt: v.excerpt || '',
       tags: (v.tag_suggestions || []).join(', '),
+      category_suggestion: v.category_suggestion || '',
     })
     setAdvanced(false)
     setEditing(true)
@@ -514,6 +537,7 @@ export default function App() {
             title: edit.title,
             rendered_html: edit.rendered_html,
             excerpt: edit.excerpt,
+            category_suggestion: edit.category_suggestion || undefined,
             tag_suggestions: edit.tags
               .split(',')
               .map((t) => t.trim())
@@ -523,6 +547,7 @@ export default function App() {
             title: edit.title,
             body: edit.body,
             excerpt: edit.excerpt,
+            category_suggestion: edit.category_suggestion || undefined,
             tag_suggestions: edit.tags
               .split(',')
               .map((t) => t.trim())
@@ -674,6 +699,39 @@ export default function App() {
         </div>
       </header>
 
+      <div className="mode-switch">
+        <button
+          type="button"
+          className={`btn ${uiMode === 'generate' ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={() => setUiMode('generate')}
+        >
+          1. 記事生成
+        </button>
+        <button
+          type="button"
+          className={`btn ${uiMode === 'ops' ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={() => setUiMode('ops')}
+        >
+          2. 運用（承認・WP）
+        </button>
+      </div>
+
+      {uiMode === 'ops' ? (
+        <OpsPanel
+          token={token}
+          stores={stores}
+          onOpenArticle={(a) => {
+            setArticle(a)
+            setUiMode('generate')
+            setStep('done')
+            setEditing(false)
+            setTplOpen(false)
+          }}
+        />
+      ) : (
+        <>
+      {error && <div className="error-banner">{error}</div>}
+
       <div className="steps">
         {(
           [
@@ -693,8 +751,6 @@ export default function App() {
           )
         })}
       </div>
-
-      {error && <div className="error-banner">{error}</div>}
 
       <div className="grid-2">
         <section className="panel">
@@ -940,11 +996,32 @@ export default function App() {
                 カテゴリーや補足は記事全体に適用されます。
               </p>
               <div className="field">
-                <label>カテゴリー</label>
-                <input
-                  value={form.category}
-                  onChange={(e) => setForm({ ...form, category: e.target.value })}
-                />
+                <label>WordPressカテゴリー（複数可）</label>
+                <p className="meta" style={{ marginTop: 0 }}>
+                  投稿時は EXPERIENCE が自動付与され、ここで選んだカテゴリーもすべて付きます
+                  （例: EXPERIENCE + 建材 + ペアコイル）。
+                </p>
+                <div className="topic-checks">
+                  {wpCategories.map((c) => {
+                    const selected = splitCats(form.category)
+                    const on = selected.includes(c.name)
+                    return (
+                      <label key={c.id} className="topic-check">
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() => {
+                            const next = on
+                              ? selected.filter((n) => n !== c.name)
+                              : [...selected, c.name]
+                            setForm({ ...form, category: joinCats(next) })
+                          }}
+                        />
+                        <span>{c.name}</span>
+                      </label>
+                    )
+                  })}
+                </div>
               </div>
               <div className="field">
                 <label>特徴・商品リスト（複数可）</label>
@@ -1051,6 +1128,32 @@ export default function App() {
                     <button className="btn btn-ghost" type="button" onClick={startEditing}>
                       編集・カスタマイズ
                     </button>
+                    {article &&
+                      ['WAITING_LIST', 'SIMILARITY_WARNING', 'RETURNED', 'ON_HOLD', 'DRAFT'].includes(
+                        article.status,
+                      ) && (
+                        <button
+                          className="btn btn-primary"
+                          type="button"
+                          disabled={busy}
+                          onClick={async () => {
+                            setBusy(true)
+                            setError('')
+                            try {
+                              const updated = await submitForApproval(token, article.id)
+                              setArticle(updated)
+                              pushLog('承認申請しました → 運用タブで承認できます')
+                              setUiMode('ops')
+                            } catch (err) {
+                              setError(err instanceof Error ? err.message : '承認申請に失敗')
+                            } finally {
+                              setBusy(false)
+                            }
+                          }}
+                        >
+                          承認申請
+                        </button>
+                      )}
                   </div>
                 </div>
                 <div className="meta">
@@ -1059,6 +1162,7 @@ export default function App() {
                   {article?.latest_similarity_score != null
                     ? ` · 類似率 ${(article.latest_similarity_score * 100).toFixed(1)}%`
                     : ''}
+                  {version.category_suggestion ? ` · カテゴリー ${version.category_suggestion}` : ''}
                 </div>
                 <div
                   className="body"
@@ -1187,6 +1291,30 @@ export default function App() {
                 )}
 
                 <div className="field">
+                  <label>WordPressカテゴリー（複数可）</label>
+                  <div className="topic-checks">
+                    {wpCategories.map((c) => {
+                      const selected = splitCats(edit.category_suggestion)
+                      const on = selected.includes(c.name)
+                      return (
+                        <label key={c.id} className="topic-check">
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            onChange={() => {
+                              const next = on
+                                ? selected.filter((n) => n !== c.name)
+                                : [...selected, c.name]
+                              setEdit({ ...edit, category_suggestion: joinCats(next) })
+                            }}
+                          />
+                          <span>{c.name}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+                <div className="field">
                   <label>抜粋</label>
                   <textarea
                     value={edit.excerpt}
@@ -1280,6 +1408,8 @@ export default function App() {
           </section>
         </aside>
       </div>
+        </>
+      )}
     </div>
   )
 }

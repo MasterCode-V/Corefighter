@@ -2,7 +2,8 @@
 
 An article is composed of three parts:
 
-    1. Fixed header   -> H2 heading + red bold "thank you" line (per store label)
+    1. Fixed header   -> centered H2 + centered red thanks + optional product line
+                         + centered main image (WordPress aligncenter)
     2. Variable body  -> the AI-written casual blog about the specific item
     3. Fixed footer   -> phone / LINE / VVF / store-info boilerplate (identical
                          on every article; NOT used for similarity)
@@ -13,6 +14,8 @@ compares the unique part). The fully assembled HTML is stored on
 
 Global defaults live here; each store may override any key via
 ``Store.article_config`` (a JSONB column).
+
+Markup mirrors clean manual EXPERIENCE posts (e.g. post #16118 / #16705 header).
 """
 from __future__ import annotations
 
@@ -31,20 +34,22 @@ DEFAULT_TEMPLATE: dict = {
     "heading_prefix": "パワフルトレードセンター",
     "heading_suffix": "店から買取情報",
     "thanks_text": "お売りいただきありがとうございました",
-    "thanks_color": "#e60000",
+    "thanks_color": "#ff0000",
     "persona_intro": "こんにちは～🙋‍♀️パワトレギャルです💕",
     "many_threshold": 10,              # qty >= this => omit model number in title
     "phone_general": "011-827-1149",
     "phone_dispatch": "050-3479-0800",
-    # Footer HTML is intentionally editable so staff can paste the exact
-    # boilerplate (including real image URLs) later. {phone_*} are filled in.
+    "line_url": "https://lin.ee/WnXr1bu",
+    # Footer HTML matches live EXPERIENCE dial block (green labels + LINE link),
+    # then the shared VVF / SNS / store boilerplate. {phone_*} / {line_url} filled in.
     "footer_html": (
-        '<hr />\n'
-        '<div class="cf-footer">\n'
-        '<p><strong>出張買取専用ダイヤルはこちら：</strong> {phone_dispatch}<br />\n'
-        '<strong>パワフルトレードセンター総合ダイヤル</strong><br />\n'
-        '最短1分カンタン査定はこちら： {phone_general}<br />\n'
-        'LINE査定もご利用ください。 LINE査定はこちらから</p>\n'
+        '<p style="text-align: left;">'
+        '<span style="color: #008000;"><strong>出張買取専用ダイヤル</strong></span>'
+        'はこちら： <b>{phone_dispatch}</b><br />\n'
+        '<span style="color: #008000;"><strong>パワフルトレードセンター総合ダイヤル</strong></span><br />\n'
+        '最短1分カンタン査定はこちら： <b>{phone_general}</b><br />\n'
+        'LINE査定もご利用ください。<br />\n'
+        'LINE査定は<a href="{line_url}">こちら</a>から</p>\n'
         '<h3>年間買取10000件　パワトレ買取実績</h3>\n'
         '<h5>【札幌市内No.1】最新のVVF電線買取価格</h5>\n'
         '<h5>【札幌市内No.1】最新のペアコイル買取価格</h5>\n'
@@ -56,8 +61,7 @@ DEFAULT_TEMPLATE: dict = {
         '<h4>パワフルトレードセンター 豊平店</h4>\n'
         '<p>〒062-0903 北海道札幌市豊平区豊平3条9丁目3-10 エムズ豊平１F 定休日：日曜・祝日</p>\n'
         '<h4>パワフルトレードセンター 東米里店</h4>\n'
-        '<p>〒003-0876 北海道札幌市白石区東米里2090-170 定休日：日曜・祝日</p>\n'
-        '</div>'
+        '<p>〒003-0876 北海道札幌市白石区東米里2090-170 定休日：日曜・祝日</p>'
     ),
 }
 
@@ -127,12 +131,9 @@ def _product_title_segment(pr: dict, many_threshold: int) -> str:
 
 
 def build_title(cfg: dict, purchase: Purchase) -> str:
-    """Title format:
-    パワトレ{label}店から最新の買取情報【{商品1} / {商品2} …】
+    """Title format (matches live WP titles with an HTML line break):
 
-    - Few items: メーカー 商品名 型番 (+ qty when > 1)
-    - Many items (qty >= many_threshold): メーカー 商品名 (+ qty), model omitted
-    - Multiple products: segments joined with " / "
+    パワトレ{label}店から最新の買取情報 <br>【{商品1} / {商品2} …】
     """
     label = cfg.get("label", "")
     many_threshold = int(cfg.get("many_threshold", 10))
@@ -143,19 +144,71 @@ def build_title(cfg: dict, purchase: Purchase) -> str:
     ]
     inner_str = " / ".join(segments) if segments else "買取品"
 
-    return f"{cfg['title_prefix']}{label}{cfg['title_suffix']}【{inner_str}】"
+    return f"{cfg['title_prefix']}{label}{cfg['title_suffix']} <br>【{inner_str}】"
 
 
 def build_heading(cfg: dict) -> str:
     return f"{cfg['heading_prefix']}{cfg.get('label', '')}{cfg['heading_suffix']}"
 
 
+def build_product_line(cfg: dict, purchase: Purchase) -> str:
+    """Centered product subtitle under the thanks line (manual EXPERIENCE style)."""
+    many_threshold = int(cfg.get("many_threshold", 10))
+    segments = [
+        seg
+        for pr in effective_products(purchase)
+        if (seg := _product_title_segment(pr, many_threshold))
+    ]
+    return " / ".join(segments)
+
+
+def build_default_tags(cfg: dict, purchase: Purchase) -> list[str]:
+    """Tags used on live posts: store label (e.g. 東米里店) + makers."""
+    tags: list[str] = []
+    label = (cfg.get("label") or "").strip()
+    if label:
+        store_tag = label if label.endswith("店") else f"{label}店"
+        tags.append(store_tag)
+    for pr in effective_products(purchase):
+        maker = (pr.get("manufacturer") or "").strip()
+        if maker and maker not in tags:
+            tags.append(maker)
+    return tags
+
+
+def build_excerpt(cfg: dict, purchase: Purchase, *, ai_excerpt: Optional[str] = None) -> str:
+    """SEO-friendly excerpt for WP / AIOSEO (#post_excerpt).
+
+    Live EXPERIENCE posts often leave excerpt empty in the editor; AIOSEO still
+    scores better when a short meta description with product + store + CTA exists.
+    Prefer a cleaned AI excerpt when present; otherwise build a deterministic one.
+    """
+    cleaned = (ai_excerpt or "").strip()
+    cleaned = cleaned.replace("\n", " ")
+    if cleaned and len(cleaned) >= 20:
+        return cleaned[:120]
+
+    label = (cfg.get("label") or "").strip()
+    store = label if label.endswith("店") else (f"{label}店" if label else "パワトレ")
+    area = (cfg.get("area") or "札幌").strip()
+    products = effective_products(purchase)
+    primary = products[0] if products else {}
+    product = (
+        (primary.get("product_name") or "").strip()
+        or (primary.get("category") or "").strip()
+        or "買取品"
+    )
+    maker = (primary.get("manufacturer") or "").strip()
+    focus = f"{maker}{product}" if maker else product
+    return f"{area}で{focus}の買取ならパワトレ{store}へ。出張買取・大量買取もご相談ください。"[:120]
+
+
 def _image_html(main_image_url: Optional[str]) -> str:
     if not main_image_url:
         return ""
+    # Class ``cf-main-image`` is a marker rewritten to wp-image-N on WP upload.
     return (
-        f'<figure class="cf-main-image">'
-        f'<img src="{main_image_url}" alt="買取商品" /></figure>'
+        f'<img class="cf-main-image aligncenter" src="{main_image_url}" alt="" />'
     )
 
 
@@ -165,19 +218,28 @@ def assemble_html(
     ai_body_html: str,
     *,
     main_image_url: Optional[str] = None,
+    product_line: Optional[str] = None,
 ) -> str:
     """Wrap the AI body with the fixed header + footer to produce the final HTML."""
+    color = cfg.get("thanks_color") or "#ff0000"
     thanks = (
-        f'<p style="color:{cfg["thanks_color"]};font-weight:bold;">'
-        f'{cfg["thanks_text"]}</p>'
+        f'<p style="text-align: center;">'
+        f'<strong><span style="color: {color};">{cfg["thanks_text"]}</span></strong></p>'
     )
+    product_html = ""
+    if product_line:
+        product_html = (
+            f'<p style="text-align: center;"><strong>{product_line}</strong></p>'
+        )
     footer = cfg["footer_html"].format(
         phone_general=cfg.get("phone_general", ""),
         phone_dispatch=cfg.get("phone_dispatch", ""),
+        line_url=cfg.get("line_url", "https://lin.ee/WnXr1bu"),
     )
     parts = [
-        f"<h2>{heading}</h2>",
+        f'<h2 style="text-align: center;">{heading}</h2>',
         thanks,
+        product_html,
         _image_html(main_image_url),
         (ai_body_html or "").strip(),
         footer,
