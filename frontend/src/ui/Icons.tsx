@@ -64,15 +64,17 @@ export function UploadIcon({ size = 26, className }: IconProps) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="#f5c400"
-      strokeWidth="1.9"
+      strokeWidth="1.8"
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
       aria-hidden
     >
-      <path d="M12 17V4" />
-      <path d="m7 9 5-5 5 5" />
-      <path d="M4 15v4M20 15v4" />
+      <path d="M12 4v10" />
+      <path d="m8 8 4-4 4 4" />
+      <path d="M5 20h14" />
+      <path d="M7 17h10" opacity="0.75" />
+      <path d="M9 14h6" opacity="0.55" />
     </svg>
   )
 }

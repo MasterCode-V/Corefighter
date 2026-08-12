@@ -1,5 +1,5 @@
 import type { Article, Store } from '../../api'
-import { plainText, statusBadgeClass, statusLabel } from '../../lib/format'
+import { isPublished, plainText, statusBadgeClass, statusLabel } from '../../lib/format'
 import { CheckCircleIcon, ExternalIcon } from '../../ui/Icons'
 import { Banner, PanelTitle, Section } from '../../ui/Layout'
 
@@ -7,8 +7,9 @@ export default function DoneStep({
   article,
   stores,
   busy,
-  submitted,
-  onSubmitApproval,
+  outcome,
+  onPublish,
+  onSaveDraft,
   onGoOps,
   onGoList,
   onNewArticle,
@@ -17,8 +18,9 @@ export default function DoneStep({
   article: Article | null
   stores: Store[]
   busy: boolean
-  submitted: boolean
-  onSubmitApproval: () => void
+  outcome: 'draft' | 'published' | null
+  onPublish: () => void
+  onSaveDraft: () => void
   onGoOps: () => void
   onGoList: () => void
   onNewArticle: () => void
@@ -26,22 +28,28 @@ export default function DoneStep({
 }) {
   const version = article?.current_version
   const store = stores.find((s) => s.id === article?.store_id)
-  const canSubmit =
-    !!article && ['DRAFT', 'WAITING_LIST', 'SIMILARITY_WARNING', 'RETURNED'].includes(article.status)
+  const published = isPublished(article?.status)
 
   return (
     <>
       <div className="cf-panel">
         <PanelTitle
-          title="記事の作成が完了しました"
-          sub="このあと「運用（承認・WP）」タブで承認と WordPress 公開を行います。"
+          title={published ? '記事を公開しました' : '記事を下書き保存しました'}
+          sub={
+            published
+              ? 'WordPress に公開済みです。掲載ページからも確認できます。'
+              : 'WordPress に下書きとして保存しました。内容を確認したら公開してください。'
+          }
           double
           rule={false}
         />
 
-        {submitted && (
+        {outcome === 'published' && (
+          <Banner kind="ok">公開が完了しました。反映まで数分かかる場合があります。</Banner>
+        )}
+        {outcome === 'draft' && (
           <Banner kind="ok">
-            承認申請を送信しました。運用タブの「承認待ち」から承認するとWordPressへ公開できます。
+            下書きを保存しました。記事一覧の「編集」からいつでも再開・公開できます。
           </Banner>
         )}
 
@@ -80,23 +88,34 @@ export default function DoneStep({
 
         <Section num={2} label="次のアクション">
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              className="cf-btn cf-btn--navy"
-              onClick={onSubmitApproval}
-              disabled={busy || !canSubmit}
-              title={canSubmit ? undefined : '現在のステータスでは申請できません'}
-            >
-              承認へ提出する
-            </button>
-            <button type="button" className="cf-btn cf-btn--outline" onClick={onGoOps}>
-              運用（承認・WP）タブへ
-            </button>
+            {!published && (
+              <>
+                <button
+                  type="button"
+                  className="cf-btn cf-btn--navy"
+                  onClick={onPublish}
+                  disabled={busy}
+                >
+                  この記事を公開する
+                </button>
+                <button
+                  type="button"
+                  className="cf-btn cf-btn--gold"
+                  onClick={onSaveDraft}
+                  disabled={busy}
+                >
+                  下書きを更新する
+                </button>
+              </>
+            )}
             <button type="button" className="cf-btn cf-btn--ghost" onClick={onBackToArticle}>
               記事を編集し直す
             </button>
-            <button type="button" className="cf-btn cf-btn--ghost" onClick={onGoList}>
-              記事一覧へ戻る
+            <button type="button" className="cf-btn cf-btn--outline" onClick={onGoList}>
+              記事一覧へ
+            </button>
+            <button type="button" className="cf-btn cf-btn--ghost" onClick={onGoOps}>
+              運用画面へ
             </button>
             <button type="button" className="cf-btn cf-btn--ghost" onClick={onNewArticle}>
               続けて新規作成

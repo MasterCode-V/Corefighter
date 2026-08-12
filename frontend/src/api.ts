@@ -493,43 +493,10 @@ export async function getRelatedPosts(token: string, articleId: string, limit = 
   return parse<RelatedPost[]>(res)
 }
 
-export async function getWaitingList(token: string) {
-  const res = await fetch(`${API}/articles/waiting-list`, { headers: authHeaders(token) })
-  return parse<Article[]>(res)
-}
-
 export async function listArticlesByStatus(token: string, status?: string, limit = 50) {
   const q = status ? `?status=${encodeURIComponent(status)}&limit=${limit}` : `?limit=${limit}`
   const res = await fetch(`${API}/articles${q}`, { headers: authHeaders(token) })
   return parse<Article[]>(res)
-}
-
-export async function submitForApproval(token: string, articleId: string, note?: string) {
-  const res = await fetch(`${API}/approval/${articleId}/submit`, {
-    method: 'POST',
-    headers: jsonHeaders(token),
-    body: JSON.stringify({ note: note || null }),
-  })
-  return parse<Article>(res)
-}
-
-export async function listPendingApprovals(token: string) {
-  const res = await fetch(`${API}/approval/pending`, { headers: authHeaders(token) })
-  return parse<Article[]>(res)
-}
-
-export async function approvalDecision(
-  token: string,
-  articleId: string,
-  decision: 'approve' | 'return' | 'hold' | 'reject',
-  note?: string,
-) {
-  const res = await fetch(`${API}/approval/${articleId}/decision`, {
-    method: 'POST',
-    headers: jsonHeaders(token),
-    body: JSON.stringify({ decision, note: note || null }),
-  })
-  return parse<Article>(res)
 }
 
 export async function publishArticle(token: string, articleId: string) {
@@ -591,9 +558,8 @@ export type DashboardSummary = {
   articles_by_status: Record<string, number>
   purchases_by_status: Record<string, number>
   jobs_by_status: Record<string, number>
-  waiting_approval: number
-  waiting_list: number
   published: number
+  draft: number
   failed_jobs: number
 }
 

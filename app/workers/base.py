@@ -116,17 +116,14 @@ async def process_job(ctx: dict, job_id: str) -> dict:
 
 
 async def _on_final_failure(db: AsyncSession, job: Job) -> None:
-    """Apply entity-level failure states (e.g. WordPress error, workflow 14)."""
-    from app.enums import ArticleStatus, PurchaseStatus
-    from app.models import Article, Purchase
+    """Apply entity-level failure states.
 
-    wp_types = {
-        JobType.WORDPRESS_DRAFT, JobType.WORDPRESS_UPDATE, JobType.WORDPRESS_PUBLISH,
-    }
-    if job.job_type in wp_types and job.article_id:
-        article = await db.get(Article, job.article_id)
-        if article:
-            article.status = ArticleStatus.WORDPRESS_ERROR
+    A failed WordPress job leaves the article in 下書き so it can simply be
+    retried; the failure itself is recorded on the job and in the activity log.
+    """
+    from app.enums import PurchaseStatus
+    from app.models import Purchase
+
     if job.job_type in {JobType.IMAGE_ANALYSIS, JobType.ARTICLE_GENERATION} and job.purchase_id:
         purchase = await db.get(Purchase, job.purchase_id)
         if purchase:

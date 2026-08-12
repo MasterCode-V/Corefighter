@@ -287,7 +287,7 @@ async def handle_wordpress_draft(db, job: Job, ctx: dict | None = None) -> dict:
         article.wordpress_post_id = post["id"]
 
     article.wordpress_site_id = site.id
-    article.status = ArticleStatus.WORDPRESS_DRAFT
+    article.status = ArticleStatus.DRAFT
     await db.flush()
     return {"wordpress_post_id": article.wordpress_post_id, "status": "draft"}
 
@@ -301,7 +301,9 @@ async def handle_wordpress_update(db, job: Job, ctx: dict | None = None) -> dict
         raise ValueError("更新対象のWordPress投稿がありません")
     site = await _resolve_site(db, article)
     client = _client(site)
-    payload = await _build_payload(db, article, version, client, status="draft")
+    # Editing a live article must not silently unpublish it.
+    wp_status = "publish" if article.status == ArticleStatus.PUBLISHED else "draft"
+    payload = await _build_payload(db, article, version, client, status=wp_status)
     await client.update_post(article.wordpress_post_id, payload)
     await db.flush()
     return {"wordpress_post_id": article.wordpress_post_id, "updated": True}
@@ -312,14 +314,18 @@ async def handle_wordpress_update(db, job: Job, ctx: dict | None = None) -> dict
 # --------------------------------------------------------------------------
 async def handle_wordpress_publish(db, job: Job, ctx: dict | None = None) -> dict:
     article, version = await _load_article_version(db, job)
-    if not article.wordpress_post_id:
-        raise ValueError("公開するWordPress下書きがありません")
     site = await _resolve_site(db, article)
     client = _client(site)
 
     payload = await _build_payload(db, article, version, client, status="publish")
-    post = await client.update_post(article.wordpress_post_id, payload)
+    # Publishing straight from the wizard is allowed, so the post may not exist yet.
+    if article.wordpress_post_id and await client.get_post(article.wordpress_post_id):
+        post = await client.update_post(article.wordpress_post_id, payload)
+    else:
+        post = await client.create_post(payload)
+        article.wordpress_post_id = post["id"]
 
+    article.wordpress_site_id = site.id
     article.status = ArticleStatus.PUBLISHED
     article.published_url = post.get("link")
     article.published_at = datetime.now(timezone.utc)

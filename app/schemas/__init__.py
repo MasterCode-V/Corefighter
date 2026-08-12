@@ -12,8 +12,7 @@ from app.schemas.purchase import (
 )
 from app.schemas.article import (
     ArticleRead, ArticleVersionRead, ArticleEditRequest,
-    GenerateArticleRequest, RegenerateRequest, ApprovalDecisionRequest,
-    SubmitForApprovalRequest,
+    GenerateArticleRequest, RegenerateRequest,
 )
 from app.schemas.job import JobRead, JobCreatedResponse
 from app.schemas.similarity import SimilarityResultRead
@@ -28,8 +27,7 @@ __all__ = [
     "ContentRuleCreate", "ContentRuleUpdate", "ContentRuleRead",
     "PurchaseCreate", "PurchaseUpdate", "PurchaseRead", "PurchaseImageRead",
     "ArticleRead", "ArticleVersionRead", "ArticleEditRequest",
-    "GenerateArticleRequest", "RegenerateRequest", "ApprovalDecisionRequest",
-    "SubmitForApprovalRequest",
+    "GenerateArticleRequest", "RegenerateRequest",
     "JobRead", "JobCreatedResponse",
     "SimilarityResultRead",
 ]

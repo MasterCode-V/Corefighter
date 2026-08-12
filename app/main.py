@@ -34,7 +34,7 @@ app = FastAPI(
     title=settings.APP_NAME,
     version=__version__,
     description=(
-        "CORE FIGHTER backend - AI article draft generation, review, approval "
+        "CORE FIGHTER backend - AI article draft generation, review "
         "and WordPress publication for second-hand goods buyback."
     ),
     openapi_url=f"{settings.API_V1_PREFIX}/openapi.json",

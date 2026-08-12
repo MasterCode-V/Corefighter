@@ -36,11 +36,17 @@ from app.services import article_service, article_template, job_service
 router = APIRouter()
 ArqDep = Annotated[ArqRedis, Depends(get_arq)]
 
-WAITING_LIST_STATUSES = [
-    ArticleStatus.WAITING_LIST,
-    ArticleStatus.SIMILARITY_WARNING,
-    ArticleStatus.NEEDS_CORRECTION,
-]
+def _status_filter(stmt, status_filter: Optional[ArticleStatus]):
+    """Articles are operated in two states: 公開 (PUBLISHED) and 下書き (everything else).
+
+    Legacy rows may still carry an approval-workflow status, so anything that is
+    not PUBLISHED is treated as 下書き.
+    """
+    if status_filter is None:
+        return stmt
+    if status_filter == ArticleStatus.PUBLISHED:
+        return stmt.where(Article.status == ArticleStatus.PUBLISHED)
+    return stmt.where(Article.status != ArticleStatus.PUBLISHED)
 
 
 async def _get_article(db, article_id: uuid.UUID) -> Article:
@@ -75,27 +81,13 @@ async def list_articles(
     stmt = _scope_filter(stmt, current_user)
     if store_id and current_user.role == UserRole.ADMIN:
         stmt = stmt.where(Article.store_id == store_id)
-    if status_filter:
-        stmt = stmt.where(Article.status == status_filter)
+    stmt = _status_filter(stmt, status_filter)
     if search:
         stmt = stmt.join(ArticleVersion, Article.current_version_id == ArticleVersion.id).where(
             ArticleVersion.title.ilike(f"%{search}%")
         )
     stmt = stmt.order_by(Article.updated_at.desc()).limit(limit).offset(offset)
     result = await db.execute(stmt)
-    return list(result.scalars().all())
-
-
-@router.get("/waiting-list", response_model=list[ArticleRead])
-async def publication_waiting_list(
-    db: DBSession, current_user: CurrentUser
-) -> list[Article]:
-    """Workflow 9: articles awaiting review before submission/approval."""
-    stmt = select(Article).options(selectinload(Article.current_version)).where(
-        Article.status.in_(WAITING_LIST_STATUSES)
-    )
-    stmt = _scope_filter(stmt, current_user)
-    result = await db.execute(stmt.order_by(Article.updated_at.desc()))
     return list(result.scalars().all())
 
 
@@ -141,8 +133,7 @@ async def browse_articles(
     stmt = _scope_filter(stmt, current_user)
     if store_id and current_user.role == UserRole.ADMIN:
         stmt = stmt.where(Article.store_id == store_id)
-    if status_filter:
-        stmt = stmt.where(Article.status == status_filter)
+    stmt = _status_filter(stmt, status_filter)
     if search:
         like = f"%{search.strip()}%"
         title_match = (

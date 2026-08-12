@@ -108,12 +108,3 @@ class ArticleEditRequest(BaseModel):
     excerpt: Optional[str] = None
     category_suggestion: Optional[str] = None
     tag_suggestions: Optional[list] = None
-
-
-class SubmitForApprovalRequest(BaseModel):
-    note: Optional[str] = None
-
-
-class ApprovalDecisionRequest(BaseModel):
-    decision: str  # approve | return | hold | reject
-    note: Optional[str] = None

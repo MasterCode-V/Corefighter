@@ -139,17 +139,23 @@ a {
 }
 
 .cf-header__account {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
   white-space: nowrap;
   opacity: 0.95;
 }
 
 .cf-chip-admin {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
   border: 1px solid var(--red);
   color: #ff5b5b;
   background: transparent;
-  border-radius: 3px;
-  padding: 4px 10px;
-  font-size: 11px;
+  border-radius: var(--radius-sm);
+  padding: 0 12px;
+  font-size: 11.5px;
   font-weight: 700;
   letter-spacing: 0.04em;
   white-space: nowrap;
@@ -163,11 +169,14 @@ a {
 }
 
 .cf-btn-logout {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
   border: 1px solid rgba(255, 255, 255, 0.85);
   background: transparent;
   color: #fff;
   border-radius: var(--radius-sm);
-  padding: 6px 16px;
+  padding: 0 16px;
   font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
@@ -207,56 +216,6 @@ a {
 
 .cf-btn-back:hover {
   background: #ffe600;
-}
-
-/* ------------------------------------------------------------------ tabs */
-
-.cf-tabbar {
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
-}
-
-.cf-tabbar__inner {
-  max-width: var(--page-max);
-  margin: 0 auto;
-  padding: 12px 20px 0;
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-}
-
-.cf-tab {
-  position: relative;
-  border: 1px solid var(--line-strong);
-  border-bottom: 0;
-  background: var(--panel);
-  color: var(--navy-ink);
-  font-size: 13px;
-  font-weight: 700;
-  padding: 10px 30px 10px 22px;
-  clip-path: polygon(0 0, 100% 0, calc(100% - 14px) 100%, 0 100%);
-  transform: translateY(1px);
-}
-
-.cf-tab:hover {
-  background: #f7f9fd;
-}
-
-.cf-tab.is-active {
-  background: var(--navy);
-  border-color: var(--navy);
-  color: #fff;
-  padding-left: 26px;
-}
-
-.cf-tab.is-active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 8px;
-  background: var(--gold);
 }
 
 /* --------------------------------------------------------------- stepper */
@@ -454,9 +413,10 @@ a {
 }
 
 .cf-title-rule {
-  height: 1px;
+  height: 2px;
   margin: 10px 0 18px;
-  background: linear-gradient(90deg, var(--crimson) 0%, rgba(200, 16, 46, 0.35) 55%, rgba(200, 16, 46, 0.08) 100%);
+  background: var(--crimson);
+  border: 0;
 }
 
 /* Numbered sub-section header ("1 基本情報") */
@@ -499,9 +459,13 @@ a {
 }
 
 .cf-section__note {
-  margin: -6px 0 12px 27px;
+  margin: 0 0 12px;
   font-size: 11.5px;
   color: var(--muted);
+}
+
+.cf-section__head:has(.cf-section__num) + .cf-section__note {
+  margin: -6px 0 12px 27px;
 }
 
 .cf-section__spacer {
@@ -1089,14 +1053,18 @@ a {
   right: 2px;
   width: 18px;
   height: 18px;
+  padding: 0;
   display: grid;
   place-items: center;
   border: 0;
   border-radius: 50%;
-  background: rgba(0, 12, 40, 0.66);
+  background: rgba(0, 12, 40, 0.78);
   color: #fff;
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 700;
   line-height: 1;
+  cursor: pointer;
+  z-index: 1;
 }
 
 .cf-thumb--empty {
@@ -1137,6 +1105,55 @@ a {
   gap: 6px;
   font-size: 11px;
   color: var(--muted);
+}
+
+.cf-product__menu {
+  position: relative;
+}
+
+.cf-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 168px;
+  padding: 4px 0;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 20, 60, 0.12);
+}
+
+.cf-menu button {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 8px 14px;
+  text-align: left;
+  font-size: 12px;
+  color: var(--navy-ink);
+  cursor: pointer;
+}
+
+.cf-menu button:hover {
+  background: #f3f6fb;
+}
+
+.cf-menu__danger {
+  color: var(--crimson) !important;
+}
+
+.cf-detail-upload {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 10px 0 8px;
+}
+
+.cf-product__left .cf-thumbs {
+  justify-content: flex-start;
 }
 
 .cf-product__body {
@@ -1620,7 +1637,7 @@ a {
 }
 
 /* =========================================================================
-   運用（承認・WP）panel — shares the tokens above with its own class names.
+   運用パネル — shares the tokens above with its own class names.
    ========================================================================= */
 
 .panel {

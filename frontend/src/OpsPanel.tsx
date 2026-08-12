@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  approvalDecision,
   createWordpressDraft,
   createWordpressSite,
   getArticle,
   getDashboardLogs,
   getDashboardSummary,
   getRecentJobs,
-  getWaitingList,
   listArticlesByStatus,
-  listPendingApprovals,
   listPurchases,
   listWordpressSites,
   pollJob,
@@ -17,13 +14,12 @@ import {
   regenerateArticle,
   retryWordpress,
   searchArticles,
-  submitForApproval,
   syncWordpressCorpus,
   triggerSimilarityCheck,
   updateWordpressSite,
 } from './api'
 import type { Article, DashboardSummary, Job, Purchase, Store } from './api'
-import { explainWorkflowError, plainText } from './lib/format'
+import { explainWorkflowError, plainText, statusLabel } from './lib/format'
 
 type Props = {
   token: string
@@ -31,36 +27,19 @@ type Props = {
   onOpenArticle?: (article: Article) => void
 }
 
-type Tab =
-  | 'dashboard'
-  | 'purchases'
-  | 'articles'
-  | 'waiting'
-  | 'approval'
-  | 'publish'
-  | 'wp'
+type Tab = 'dashboard' | 'purchases' | 'articles' | 'publish' | 'wp'
 
-function statusJa(status: string) {
-  const map: Record<string, string> = {
-    DRAFT: '下書き',
-    WAITING_LIST: '公開待機',
-    SIMILARITY_WARNING: '類似率注意',
-    NEEDS_CORRECTION: '要修正',
-    WAITING_APPROVAL: '承認待ち',
-    APPROVED: '承認済み',
-    RETURNED: '差戻し',
-    ON_HOLD: '保留',
-    REJECTED: '却下',
-    WORDPRESS_DRAFT: 'WP下書き',
-    PUBLISHED: '公開済み',
-    WORDPRESS_ERROR: 'WPエラー',
-    PENDING: '処理中',
-    ANALYZING: '解析中',
-    ANALYZED: '解析済',
-    GENERATING: '生成中',
-    ARTICLE_READY: '記事準備完了',
-  }
-  return map[status] || status
+const PURCHASE_STATUS_JA: Record<string, string> = {
+  PENDING: '処理中',
+  ANALYZING: '解析中',
+  ANALYZED: '解析済',
+  GENERATING: '生成中',
+  ARTICLE_READY: '記事準備完了',
+  FAILED: '失敗',
+}
+
+function purchaseStatusJa(status: string) {
+  return PURCHASE_STATUS_JA[status] || status
 }
 
 export default function OpsPanel({ token, stores, onOpenArticle }: Props) {
@@ -71,8 +50,6 @@ export default function OpsPanel({ token, stores, onOpenArticle }: Props) {
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [logs, setLogs] = useState<Array<{ id: string; level: string; message: string; created_at: string }>>([])
   const [jobs, setJobs] = useState<Job[]>([])
-  const [waiting, setWaiting] = useState<Article[]>([])
-  const [pending, setPending] = useState<Article[]>([])
   const [publishable, setPublishable] = useState<Article[]>([])
   const [purchases, setPurchases] = useState<Purchase[]>([])
   const [articles, setArticles] = useState<Article[]>([])
@@ -81,7 +58,6 @@ export default function OpsPanel({ token, stores, onOpenArticle }: Props) {
   const [wpSites, setWpSites] = useState<
     Array<{ id: string; store_id: string; name: string; base_url: string; username: string; is_active: boolean }>
   >([])
-  const [note, setNote] = useState('')
   const [wpForm, setWpForm] = useState({
     store_id: '',
     base_url: 'https://www.buyersbox.co.jp',
@@ -93,23 +69,17 @@ export default function OpsPanel({ token, stores, onOpenArticle }: Props) {
   const refresh = useCallback(async () => {
     setError('')
     try {
-      const [s, l, j, w, p, drafts, errors, approved, purch] = await Promise.all([
+      const [s, l, j, drafts, purch] = await Promise.all([
         getDashboardSummary(token),
         getDashboardLogs(token, 30),
         getRecentJobs(token, 15),
-        getWaitingList(token),
-        listPendingApprovals(token).catch(() => [] as Article[]),
-        listArticlesByStatus(token, 'WORDPRESS_DRAFT'),
-        listArticlesByStatus(token, 'WORDPRESS_ERROR'),
-        listArticlesByStatus(token, 'APPROVED').catch(() => [] as Article[]),
+        listArticlesByStatus(token, 'DRAFT'),
         listPurchases(token, 40).catch(() => [] as Purchase[]),
       ])
       setSummary(s)
       setLogs(l)
       setJobs(j)
-      setWaiting(w)
-      setPending(p)
-      setPublishable([...drafts, ...errors, ...approved])
+      setPublishable(drafts)
       setPurchases(purch)
 
       const sites = (
@@ -214,7 +184,7 @@ export default function OpsPanel({ token, stores, onOpenArticle }: Props) {
           再読込
         </button>
       </div>
-      <p className="lead">買取一覧・記事検索・公開待機・承認・WordPress下書き／公開・ダッシュボード</p>
+      <p className="lead">買取一覧・記事検索・下書きの公開・WordPress接続・ダッシュボード</p>
 
       <div className="steps" style={{ marginBottom: 14, flexWrap: 'wrap' }}>
         {(
@@ -222,9 +192,7 @@ export default function OpsPanel({ token, stores, onOpenArticle }: Props) {
             ['dashboard', 'ダッシュボード'],
             ['purchases', '買取一覧'],
             ['articles', '記事一覧'],
-            ['waiting', '公開待機'],
-            ['approval', '承認'],
-            ['publish', 'WP公開'],
+            ['publish', '下書きの公開'],
             ['wp', 'WP接続'],
           ] as const
         ).map(([id, label]) => (
@@ -243,19 +211,11 @@ export default function OpsPanel({ token, stores, onOpenArticle }: Props) {
       {error && <div className="error-banner">{error}</div>}
       {msg && <p className="meta">{msg}</p>}
 
-      {(tab === 'waiting' || tab === 'approval') && (
-        <div className="field">
-          <label>メモ（承認／申請時）</label>
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="任意" />
-        </div>
-      )}
-
       {tab === 'dashboard' && summary && (
         <>
           <div className="row" style={{ gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-            <span className="pill">待機 {summary.waiting_list}</span>
-            <span className="pill warn">承認待ち {summary.waiting_approval}</span>
-            <span className="pill ok">公開済 {summary.published}</span>
+            <span className="pill">下書き {summary.draft}</span>
+            <span className="pill ok">公開 {summary.published}</span>
             <span className="pill err">失敗ジョブ {summary.failed_jobs}</span>
           </div>
           <h3 style={{ fontSize: '0.95rem' }}>最近のジョブ</h3>
@@ -293,7 +253,7 @@ export default function OpsPanel({ token, stores, onOpenArticle }: Props) {
                 <div>
                   <strong>{name}</strong>
                   <div className="meta">
-                    {statusJa(p.status)} · {store?.name || p.store_id.slice(0, 8)}
+                    {purchaseStatusJa(p.status)} · {store?.name || p.store_id.slice(0, 8)}
                     {p.purchase_date ? ` · ${p.purchase_date.slice(0, 10)}` : ''}
                     {p.purchase_method ? ` · ${p.purchase_method}` : ''}
                   </div>
@@ -319,12 +279,8 @@ export default function OpsPanel({ token, stores, onOpenArticle }: Props) {
               <label>ステータス</label>
               <select value={articleStatus} onChange={(e) => setArticleStatus(e.target.value)}>
                 <option value="">すべて</option>
-                <option value="WAITING_LIST">公開待機</option>
-                <option value="WAITING_APPROVAL">承認待ち</option>
-                <option value="WORDPRESS_DRAFT">WP下書き</option>
-                <option value="PUBLISHED">公開済み</option>
-                <option value="WORDPRESS_ERROR">WPエラー</option>
-                <option value="RETURNED">差戻し</option>
+                <option value="DRAFT">下書き</option>
+                <option value="PUBLISHED">公開</option>
               </select>
             </div>
             <button className="btn btn-primary" type="button" onClick={() => void loadArticles()}>
@@ -338,7 +294,7 @@ export default function OpsPanel({ token, stores, onOpenArticle }: Props) {
                 <div>
                   <strong>{titleOf(a)}</strong>
                   <div className="meta">
-                    {statusJa(a.status)}
+                    {statusLabel(a.status)}
                     {a.latest_similarity_score != null
                       ? ` · 類似率 ${(a.latest_similarity_score * 100).toFixed(1)}%`
                       : ''}
@@ -373,208 +329,52 @@ export default function OpsPanel({ token, stores, onOpenArticle }: Props) {
         </>
       )}
 
-      {tab === 'waiting' && (
+      {tab === 'publish' && (
         <div className="ops-list">
-          {waiting.length === 0 && <p className="meta">公開待機リストは空です。</p>}
-          {waiting.map((a) => (
+          {publishable.length === 0 && <p className="meta">下書きの記事はありません。</p>}
+          {publishable.map((a) => (
             <div key={a.id} className="ops-item">
               <div>
                 <strong>{titleOf(a)}</strong>
                 <div className="meta">
-                  {statusJa(a.status)}
+                  {statusLabel(a.status)}
+                  {a.wordpress_post_id ? ` · WP #${a.wordpress_post_id}` : ' · WP未送信'}
                   {a.latest_similarity_score != null
                     ? ` · 類似率 ${(a.latest_similarity_score * 100).toFixed(1)}%`
                     : ''}
                 </div>
               </div>
               <div className="row">
-                <button className="btn btn-ghost" type="button" onClick={() => onOpenArticle?.(a)}>
-                  開く
-                </button>
                 <button
-                  className="btn btn-primary"
+                  className="btn btn-secondary"
                   type="button"
                   disabled={busy}
-                  onClick={async () => {
-                    setBusy(true)
-                    try {
-                      await submitForApproval(token, a.id, note || undefined)
-                      setMsg('承認申請しました')
-                      setNote('')
-                      await refresh()
-                    } catch (err) {
-                      setError(explainWorkflowError(err, '申請に失敗'))
-                    } finally {
-                      setBusy(false)
-                    }
-                  }}
+                  onClick={() => void runJob('公開', () => publishArticle(token, a.id))}
                 >
-                  承認申請
-                </button>
-                <button
-                  className="btn btn-ghost"
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void runJob('再生成', () => regenerateArticle(token, a.id))}
-                >
-                  再生成
+                  公開
                 </button>
                 <button
                   className="btn btn-ghost"
                   type="button"
                   disabled={busy}
                   onClick={() =>
-                    void runJob('類似率チェック', () => triggerSimilarityCheck(token, a.id))
+                    void runJob('下書き保存', () => createWordpressDraft(token, a.id))
                   }
                 >
-                  類似率
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {tab === 'approval' && (
-        <div className="ops-list">
-          {pending.length === 0 && <p className="meta">承認待ちはありません（管理者のみ表示）。</p>}
-          {pending.map((a) => (
-            <div key={a.id} className="ops-item">
-              <div>
-                <strong>{titleOf(a)}</strong>
-                <div className="meta">{statusJa(a.status)}</div>
-              </div>
-              <div className="row">
-                <button className="btn btn-ghost" type="button" onClick={() => onOpenArticle?.(a)}>
-                  開く
-                </button>
-                <button
-                  className="btn btn-primary"
-                  type="button"
-                  disabled={busy}
-                  onClick={async () => {
-                    setBusy(true)
-                    try {
-                      await approvalDecision(token, a.id, 'approve', note || undefined)
-                      setMsg('承認 → WP下書きジョブを投入しました')
-                      setNote('')
-                      await refresh()
-                    } catch (err) {
-                      setError(explainWorkflowError(err, '承認に失敗'))
-                    } finally {
-                      setBusy(false)
-                    }
-                  }}
-                >
-                  承認（WP下書き）
-                </button>
-                <button
-                  className="btn btn-warn"
-                  type="button"
-                  disabled={busy}
-                  onClick={async () => {
-                    setBusy(true)
-                    try {
-                      await approvalDecision(token, a.id, 'return', note || undefined)
-                      setMsg('差戻しました')
-                      await refresh()
-                    } catch (err) {
-                      setError(explainWorkflowError(err, '差戻しに失敗'))
-                    } finally {
-                      setBusy(false)
-                    }
-                  }}
-                >
-                  差戻し
+                  WP下書きを更新
                 </button>
                 <button
                   className="btn btn-ghost"
                   type="button"
                   disabled={busy}
-                  onClick={async () => {
-                    setBusy(true)
-                    try {
-                      await approvalDecision(token, a.id, 'hold', note || undefined)
-                      await refresh()
-                    } catch (err) {
-                      setError(explainWorkflowError(err, '保留に失敗'))
-                    } finally {
-                      setBusy(false)
-                    }
-                  }}
+                  onClick={() =>
+                    void runJob('公開再試行', () =>
+                      retryWordpress(token, a.id, 'WORDPRESS_PUBLISH'),
+                    )
+                  }
                 >
-                  保留
+                  再試行
                 </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {tab === 'publish' && (
-        <div className="ops-list">
-          {publishable.length === 0 && <p className="meta">WP下書き／エラーの記事はありません。</p>}
-          {publishable.map((a) => (
-            <div key={a.id} className="ops-item">
-              <div>
-                <strong>{titleOf(a)}</strong>
-                <div className="meta">
-                  {statusJa(a.status)}
-                  {a.wordpress_post_id ? ` · WP #${a.wordpress_post_id}` : ''}
-                  {a.published_url ? ` · ${a.published_url}` : ''}
-                </div>
-              </div>
-              <div className="row">
-                {a.status === 'APPROVED' && (
-                  <button
-                    className="btn btn-primary"
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      void runJob('WP下書き作成', () => createWordpressDraft(token, a.id))
-                    }
-                  >
-                    WP下書き作成
-                  </button>
-                )}
-                {a.status === 'WORDPRESS_DRAFT' && (
-                  <button
-                    className="btn btn-secondary"
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void runJob('公開', () => publishArticle(token, a.id))}
-                  >
-                    公開
-                  </button>
-                )}
-                {a.status === 'WORDPRESS_ERROR' && (
-                  <>
-                    <button
-                      className="btn btn-warn"
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        void runJob('下書き再試行', () =>
-                          retryWordpress(token, a.id, 'WORDPRESS_DRAFT'),
-                        )
-                      }
-                    >
-                      下書き再試行
-                    </button>
-                    <button
-                      className="btn btn-ghost"
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        void runJob('公開再試行', () =>
-                          retryWordpress(token, a.id, 'WORDPRESS_PUBLISH'),
-                        )
-                      }
-                    >
-                      公開再試行
-                    </button>
-                  </>
-                )}
                 <button
                   className="btn btn-ghost"
                   type="button"

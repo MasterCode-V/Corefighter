@@ -10,7 +10,6 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.enums import ArticleStatus
 from app.integrations.openai_client import openai_client
 from app.models import (
     Article,
@@ -124,13 +123,8 @@ async def handle_similarity_check(db, job: Job, ctx: dict | None = None) -> dict
 
     version.similarity_score = final_score
     article.latest_similarity_score = final_score
-
-    if passed:
-        # Workflow 9: enter publication waiting list.
-        article.status = ArticleStatus.WAITING_LIST
-    else:
-        # Workflow 7: similarity 50%+ -> warning.
-        article.status = ArticleStatus.SIMILARITY_WARNING
+    # The score is advisory only: it is shown as a warning and never changes the
+    # 下書き / 公開 state nor blocks publishing.
 
     await db.flush()
     return {

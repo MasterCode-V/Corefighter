@@ -1,5 +1,6 @@
 import type { Persona, PurchaseImage, Store } from '../../api'
-import { CheckCircleIcon, DotsIcon, LinkIcon, PlusIcon, TrashIcon } from '../../ui/Icons'
+import { useEffect, useRef, useState } from 'react'
+import { DotsIcon, LinkIcon, PlusIcon } from '../../ui/Icons'
 import { Field, PanelTitle, Section } from '../../ui/Layout'
 import { DetailImagePicker, MainImagePicker } from './ImagePicker'
 import { CONDITION_OPTIONS, PURCHASE_METHODS, areaIsManual, type ProductRow } from './types'
@@ -27,6 +28,7 @@ export default function BasicStep({
   onProductChange,
   onAddProduct,
   onRemoveProduct,
+  onClearProduct,
   onMainAdd,
   onMainRemoveFile,
   onRemoveStoredImage,
@@ -51,6 +53,7 @@ export default function BasicStep({
   onProductChange: (index: number, patch: Partial<ProductRow>) => void
   onAddProduct: () => void
   onRemoveProduct: (index: number) => void
+  onClearProduct: (index: number) => void
   onMainAdd: (files: File[]) => void
   onMainRemoveFile: (index: number) => void
   onRemoveStoredImage: (image: PurchaseImage) => void
@@ -59,23 +62,27 @@ export default function BasicStep({
   onAnalyze: () => void
   onSaveDraft: () => void
 }) {
-  const mainCount = mainFiles.length + mainImages.length
-  const detailCount = products.reduce((n, p) => n + p.files.length + p.images.length, 0)
   const manualArea = areaIsManual(form.purchase_method)
+  const [openMenu, setOpenMenu] = useState<number | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (openMenu === null) return
+    function onDoc(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpenMenu(null)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [openMenu])
 
   return (
     <>
       <div className="cf-panel">
-        <PanelTitle
-          title="記事生成の準備"
-          sub="基本情報と商品画像を登録してください。"
-          double
-          rule={false}
-        />
+        <PanelTitle title="記事生成の準備" double rule />
 
-        <Section num={1} label="基本情報">
+        <Section label="基本情報">
           <div className="cf-grid-2">
-            <Field label="AIペルソナ">
+            <Field label="AI人格">
               <select
                 className="cf-select"
                 value={personaId}
@@ -115,23 +122,17 @@ export default function BasicStep({
                 ))}
               </select>
             </Field>
-            <Field
-              label="買取地区"
-              hint={manualArea ? '例：札幌市白石区' : '店頭買取のため地区は「—」になります'}
-            >
-              {manualArea ? (
+            {/* 買取地区 is only relevant for 出張 / 宅配; hidden entirely for 店頭. */}
+            {manualArea && (
+              <Field label="買取地区" hint="例：札幌市白石区">
                 <input
                   className="cf-input"
                   value={form.purchase_area}
                   placeholder="買取地区を入力"
                   onChange={(e) => onFormChange({ purchase_area: e.target.value })}
                 />
-              ) : (
-                <select className="cf-select" value="—" disabled>
-                  <option value="—">—</option>
-                </select>
-              )}
-            </Field>
+              </Field>
+            )}
             <Field label="掲載店舗" required>
               <select
                 className="cf-select"
@@ -150,7 +151,7 @@ export default function BasicStep({
           </div>
         </Section>
 
-        <Section num={2} label="メイン画像（記事用）">
+        <Section label="メイン画像（記事用）">
           <MainImagePicker
             files={mainFiles}
             images={mainImages}
@@ -162,7 +163,6 @@ export default function BasicStep({
         </Section>
 
         <Section
-          num={3}
           label="商品別の詳細画像・情報"
           note="商品ごとにブロックを作成し、対応するラベル画像を登録してください。"
           action={
@@ -191,22 +191,46 @@ export default function BasicStep({
                     <LinkIcon />
                     商品{index + 1}に紐づく画像
                   </span>
-                  {products.length > 1 ? (
+                  <div className="cf-product__menu" ref={openMenu === index ? menuRef : undefined}>
                     <button
                       type="button"
                       className="cf-iconbtn"
-                      title="この商品ブロックを削除"
-                      aria-label="この商品ブロックを削除"
-                      onClick={() => onRemoveProduct(index)}
+                      title="メニュー"
+                      aria-label="商品メニュー"
+                      aria-expanded={openMenu === index}
+                      onClick={() => setOpenMenu((cur) => (cur === index ? null : index))}
                       disabled={busy}
                     >
-                      <TrashIcon size={15} />
+                      <DotsIcon size={16} />
                     </button>
-                  ) : (
-                    <span className="cf-iconbtn cf-iconbtn--plain" aria-hidden>
-                      <DotsIcon />
-                    </span>
-                  )}
+                    {openMenu === index && (
+                      <div className="cf-menu" role="menu">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            onClearProduct(index)
+                            setOpenMenu(null)
+                          }}
+                        >
+                          内容をクリア
+                        </button>
+                        {products.length > 1 && (
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="cf-menu__danger"
+                            onClick={() => {
+                              onRemoveProduct(index)
+                              setOpenMenu(null)
+                            }}
+                          >
+                            この商品ブロックを削除
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="cf-product__body">
                   <DetailImagePicker
@@ -221,7 +245,7 @@ export default function BasicStep({
                   <div className="cf-product__right">
                     <h4>抽出される商品情報</h4>
                     <p className="cf-section__note" style={{ margin: '0 0 10px' }}>
-                      空のままでOKです。画像解析後に自動入力されます（手入力もできます）。
+                      画像解析後に自動入力されます（手入力もできます）。
                     </p>
                     <div className="cf-inline-field">
                       <label htmlFor={`mk-${product.key}`}>メーカー</label>
@@ -295,22 +319,14 @@ export default function BasicStep({
         </Section>
       </div>
 
-      <div className="cf-summary">
-        <CheckCircleIcon />
-        メイン画像 {mainCount}枚
-        <span className="cf-summary__dot">・</span>
-        商品 {products.length} 件
-        <span className="cf-summary__dot">・</span>
-        詳細画像 {detailCount ? `${detailCount}枚` : '未登録'}
-      </div>
-
-      <div className="cf-actionrow">
-        <button type="button" className="cf-cta" onClick={onAnalyze} disabled={busy}>
-          <span className="cf-cta__gold" />
-          <span className="cf-cta__body">
-            {busy ? '処理中…' : '画像を解析して商品情報を入力'}
-          </span>
-          <span className="cf-cta__red" />
+      <div className="cf-actionrow" style={{ marginTop: 22 }}>
+        <button
+          type="button"
+          className="cf-btn cf-btn--navy cf-btn--lg"
+          onClick={onAnalyze}
+          disabled={busy}
+        >
+          {busy ? '処理中…' : '画像を解析して情報入力'}
         </button>
         <button
           type="button"

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   analyzeImages,
   createPurchase,
+  createWordpressDraft,
   deletePurchaseImage,
   editArticle,
   generateArticle,
@@ -9,8 +10,8 @@ import {
   getPurchase,
   listArticles,
   pollJob,
+  publishArticle,
   regenerateArticle,
-  submitForApproval,
   updatePurchase,
   uploadImage,
   type Article,
@@ -122,7 +123,7 @@ export default function GeneratePage({
   const [log, setLog] = useState<string[]>([])
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [submitted, setSubmitted] = useState(false)
+  const [outcome, setOutcome] = useState<'draft' | 'published' | null>(null)
 
   useEffect(() => {
     if (!storeId && stores.length) setStoreId(user.store_id || stores[0].id)
@@ -203,6 +204,53 @@ export default function GeneratePage({
 
   function removeProduct(index: number) {
     setProducts((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)))
+  }
+
+  /** Reset typed fields, pending files, and stored detail images for one product block. */
+  async function clearProduct(index: number) {
+    const row = products[index]
+    if (!row) return
+    setBusy(true)
+    setError('')
+    try {
+      if (purchase) {
+        for (const img of row.images) {
+          await deletePurchaseImage(token, purchase.id, img.id)
+        }
+        const fresh = await getPurchase(token, purchase.id)
+        setPurchase(fresh)
+        setProducts((prev) => {
+          const next = rowsFromPurchase(fresh, prev)
+          return next.map((p, i) =>
+            i === index
+              ? {
+                  ...p,
+                  manufacturer: '',
+                  product_name: '',
+                  model_number: '',
+                  condition: '',
+                  quantity: '1',
+                  quantity_unit: '点',
+                  files: [],
+                }
+              : p,
+          )
+        })
+      } else {
+        setProducts((prev) =>
+          prev.map((p, i) =>
+            i === index
+              ? { ...emptyProduct(), key: p.key, images: [], files: [] }
+              : p,
+          ),
+        )
+      }
+      pushLog(`商品${index + 1}の内容をクリアしました`)
+    } catch (err) {
+      setError(explainWorkflowError(err, '内容のクリアに失敗しました'))
+    } finally {
+      setBusy(false)
+    }
   }
 
   function addDetailFiles(index: number, files: File[]) {
@@ -507,18 +555,35 @@ export default function GeneratePage({
     }
   }
 
-  async function submitApproval() {
+  /** 下書き保存（WordPressに下書きとして送る）／公開（WordPressで公開する）。 */
+  async function runWordpress(kind: 'draft' | 'publish') {
     if (!article) return
+    const label = kind === 'draft' ? '下書き保存' : '公開'
     setBusy(true)
     setError('')
+    setNotice('')
     try {
-      const updated = await submitForApproval(token, article.id)
-      applyArticle(await getArticle(token, updated.id))
-      setSubmitted(true)
+      const { job_id } =
+        kind === 'draft'
+          ? await createWordpressDraft(token, article.id)
+          : await publishArticle(token, article.id)
+      const job = await pollJob(token, job_id, (j) => {
+        setJobStatus(j.status)
+        pushLog(`${label}ジョブ: ${j.status}`)
+      })
+      if (job.status !== 'COMPLETED') {
+        throw new Error(
+          job.error ? `${label}に失敗しました。理由：${job.error}` : `${label}に失敗しました。`,
+        )
+      }
+      applyArticle(await getArticle(token, article.id))
+      setOutcome(kind === 'draft' ? 'draft' : 'published')
+      setStep(3)
     } catch (err) {
-      setError(explainWorkflowError(err, '承認申請に失敗しました'))
+      setError(explainWorkflowError(err, `${label}に失敗しました`))
     } finally {
       setBusy(false)
+      setJobStatus('')
     }
   }
 
@@ -531,7 +596,7 @@ export default function GeneratePage({
     setMainImages([])
     setTopicFlags({})
     setFreeText('')
-    setSubmitted(false)
+    setOutcome(null)
     setNotice('')
     setError('')
     setLog([])
@@ -566,6 +631,7 @@ export default function GeneratePage({
             onProductChange={patchProduct}
             onAddProduct={addProduct}
             onRemoveProduct={removeProduct}
+            onClearProduct={clearProduct}
             onMainAdd={(files) => setMainFiles((prev) => [...prev, ...files].slice(0, 4))}
             onMainRemoveFile={(i) => setMainFiles((prev) => prev.filter((_, k) => k !== i))}
             onRemoveStoredImage={removeStoredImage}
@@ -606,7 +672,8 @@ export default function GeneratePage({
             onSave={saveEdit}
             onRegenerate={runRegenerate}
             onBack={() => setStep(1)}
-            onNext={() => setStep(3)}
+            onSaveDraft={() => void runWordpress('draft')}
+            onPublish={() => void runWordpress('publish')}
           />
         )}
 
@@ -615,8 +682,9 @@ export default function GeneratePage({
             article={article}
             stores={stores}
             busy={busy}
-            submitted={submitted}
-            onSubmitApproval={submitApproval}
+            outcome={outcome}
+            onPublish={() => void runWordpress('publish')}
+            onSaveDraft={() => void runWordpress('draft')}
             onGoOps={onGoOps}
             onGoList={onGoList}
             onNewArticle={resetFlow}

@@ -110,39 +110,6 @@ export function BackBar({ label, onClick }: { label: string; onClick: () => void
   )
 }
 
-/* -------------------------------------------------------------------- tabs */
-
-export type WorkflowTab = 'generate' | 'ops'
-
-export function TabBar({
-  active,
-  onChange,
-}: {
-  active: WorkflowTab
-  onChange: (tab: WorkflowTab) => void
-}) {
-  return (
-    <div className="cf-tabbar">
-      <div className="cf-tabbar__inner">
-        <button
-          type="button"
-          className={`cf-tab${active === 'generate' ? ' is-active' : ''}`}
-          onClick={() => onChange('generate')}
-        >
-          1. 記事生成
-        </button>
-        <button
-          type="button"
-          className={`cf-tab${active === 'ops' ? ' is-active' : ''}`}
-          onClick={() => onChange('ops')}
-        >
-          2. 運用（承認・WP）
-        </button>
-      </div>
-    </div>
-  )
-}
-
 /* ----------------------------------------------------------------- stepper */
 
 export function Stepper({
@@ -216,7 +183,8 @@ export function Section({
   action,
   children,
 }: {
-  num: number
+  /** Omit to hide the navy number badge (wizard stepper already shows progress). */
+  num?: number
   label: string
   note?: string
   action?: ReactNode
@@ -225,7 +193,7 @@ export function Section({
   return (
     <section className="cf-section">
       <div className="cf-section__head">
-        <span className="cf-section__num">{num}</span>
+        {num !== undefined && <span className="cf-section__num">{num}</span>}
         <span className="cf-section__label">{label}</span>
         <span className="cf-section__spacer" />
         {action}

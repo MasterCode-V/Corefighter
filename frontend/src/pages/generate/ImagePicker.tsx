@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import type { PurchaseImage } from '../../api'
 import { proxyImageUrl } from '../../lib/format'
-import { ImageIcon, UploadIcon } from '../../ui/Icons'
+import { UploadIcon } from '../../ui/Icons'
 
 export type PickerItem =
   | { kind: 'file'; file: File; url: string }
@@ -22,14 +22,11 @@ function useItems(files: File[], images: PurchaseImage[]): PickerItem[] {
 
 function Thumbs({
   items,
-  minSlots,
   onRemove,
 }: {
   items: PickerItem[]
-  minSlots: number
   onRemove: (item: PickerItem, index: number) => void
 }) {
-  const empties = Math.max(0, minSlots - items.length)
   return (
     <div className="cf-thumbs">
       {items.map((item, i) => (
@@ -43,11 +40,6 @@ function Thumbs({
           >
             ×
           </button>
-        </div>
-      ))}
-      {Array.from({ length: empties }).map((_, i) => (
-        <div className="cf-thumb cf-thumb--empty" key={`e${i}`}>
-          <ImageIcon />
         </div>
       ))}
     </div>
@@ -126,7 +118,6 @@ export function MainImagePicker({
       {items.length > 0 && (
         <Thumbs
           items={items}
-          minSlots={0}
           onRemove={(item, i) =>
             item.kind === 'file' ? onRemoveFile(i - images.length) : onRemoveStored(item.image)
           }
@@ -165,17 +156,17 @@ export function DetailImagePicker({
         <br />
         この画像から商品{index + 1}の情報を抽出します
       </p>
-      <div style={{ margin: '10px 0 8px' }}>
-        <UploadIcon size={24} />
+      <div className="cf-detail-upload">
+        <UploadIcon size={22} />
+        <button
+          type="button"
+          className="cf-btn cf-btn--outline cf-btn--sm"
+          onClick={() => inputRef.current?.click()}
+          disabled={disabled}
+        >
+          画像を選択
+        </button>
       </div>
-      <button
-        type="button"
-        className="cf-btn cf-btn--outline cf-btn--sm"
-        onClick={() => inputRef.current?.click()}
-        disabled={disabled}
-      >
-        画像を選択
-      </button>
       <input
         ref={inputRef}
         type="file"
@@ -188,13 +179,14 @@ export function DetailImagePicker({
           e.target.value = ''
         }}
       />
-      <Thumbs
-        items={items}
-        minSlots={2}
-        onRemove={(item, i) =>
-          item.kind === 'file' ? onRemoveFile(i - images.length) : onRemoveStored(item.image)
-        }
-      />
+      {items.length > 0 && (
+        <Thumbs
+          items={items}
+          onRemove={(item, i) =>
+            item.kind === 'file' ? onRemoveFile(i - images.length) : onRemoveStored(item.image)
+          }
+        />
+      )}
     </div>
   )
 }

@@ -38,13 +38,13 @@ async def dashboard_summary(db: DBSession, current_user: CurrentUser) -> dict:
         ).all()
     }
 
+    published = articles_by_status.get(ArticleStatus.PUBLISHED.value, 0)
     return {
         "articles_by_status": articles_by_status,
         "purchases_by_status": purchases_by_status,
         "jobs_by_status": jobs_by_status,
-        "waiting_approval": articles_by_status.get(ArticleStatus.WAITING_APPROVAL.value, 0),
-        "waiting_list": articles_by_status.get(ArticleStatus.WAITING_LIST.value, 0),
-        "published": articles_by_status.get(ArticleStatus.PUBLISHED.value, 0),
+        "published": published,
+        "draft": sum(articles_by_status.values()) - published,
         "failed_jobs": jobs_by_status.get(JobStatus.FAILED.value, 0),
     }
 

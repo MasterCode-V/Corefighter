@@ -127,7 +127,9 @@ async def _generate(db, job: Job, ctx, *, regeneration: bool) -> dict:
     outcome = ValidationOutcome(validation["outcome"])
 
     if outcome == ValidationOutcome.FAILED:
-        article.status = ArticleStatus.NEEDS_CORRECTION
+        # Validation issues are reported on the version; the article itself just
+        # stays 下書き so staff can fix it in the editor.
+        article.status = ArticleStatus.DRAFT
         purchase.status = PurchaseStatus.ARTICLE_READY
         await db.flush()
         return {"version_no": version.version_no, "validation": validation, "next": "needs_correction"}

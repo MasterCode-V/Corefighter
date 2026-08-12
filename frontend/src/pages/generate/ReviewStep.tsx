@@ -216,10 +216,13 @@ export default function ReviewStep({
         >
           基本情報へ戻る
         </button>
-        <button type="button" className="cf-cta" onClick={onGenerate} disabled={busy}>
-          <span className="cf-cta__gold" />
-          <span className="cf-cta__body">{busy ? '生成中…' : 'この内容で記事を生成'}</span>
-          <span className="cf-cta__red" />
+        <button
+          type="button"
+          className="cf-btn cf-btn--navy cf-btn--lg"
+          onClick={onGenerate}
+          disabled={busy}
+        >
+          {busy ? '生成中…' : 'この内容で記事を生成'}
         </button>
       </div>
     </>

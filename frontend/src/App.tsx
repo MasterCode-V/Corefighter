@@ -16,7 +16,7 @@ import ArticleListPage from './pages/ArticleListPage'
 import GeneratePage from './pages/GeneratePage'
 import LoginPage from './pages/LoginPage'
 import OpsPanel from './OpsPanel'
-import { AppHeader, BackBar, Banner, TabBar } from './ui/Layout'
+import { AppHeader, BackBar, Banner } from './ui/Layout'
 
 const TOKEN_KEY = 'cf_token'
 
@@ -97,7 +97,7 @@ export default function App() {
 
   const isAdmin = user.role === 'ADMIN'
   const accountLabel = `${user.full_name || user.email}・${roleLabel(user.role)}`
-  const isWorkflow = route.name === 'generate' || route.name === 'ops'
+  const showBack = route.name !== 'articles'
 
   return (
     <>
@@ -110,14 +110,7 @@ export default function App() {
         onAdmin={() => navigate({ name: 'admin' })}
       />
 
-      {isWorkflow && (
-        <TabBar
-          active={route.name === 'ops' ? 'ops' : 'generate'}
-          onChange={(tab) => navigate(tab === 'ops' ? { name: 'ops' } : { name: 'generate' })}
-        />
-      )}
-
-      {route.name === 'admin' && (
+      {showBack && (
         <BackBar label="記事一覧へ戻る" onClick={() => navigate({ name: 'articles' })} />
       )}
 

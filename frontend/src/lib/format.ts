@@ -1,52 +1,18 @@
-export const ARTICLE_STATUS_LABELS: Record<string, string> = {
-  DRAFT: '下書き',
-  NEEDS_CORRECTION: '要修正',
-  SIMILARITY_WARNING: '類似警告',
-  WAITING_LIST: '公開待ち',
-  WAITING_APPROVAL: '承認待ち',
-  RETURNED: '差戻し',
-  ON_HOLD: '保留',
-  REJECTED: '却下',
-  APPROVED: '承認済み',
-  WORDPRESS_DRAFT: 'WP下書き',
-  WORDPRESS_ERROR: 'WPエラー',
-  PUBLISHED: '公開済み',
-}
-
-const STATUS_TONES: Record<string, 'red' | 'gray' | 'amber' | 'green'> = {
-  PUBLISHED: 'red',
-  WORDPRESS_ERROR: 'red',
-  NEEDS_CORRECTION: 'amber',
-  SIMILARITY_WARNING: 'amber',
-  WAITING_APPROVAL: 'amber',
-  RETURNED: 'amber',
-  APPROVED: 'green',
-  WORDPRESS_DRAFT: 'green',
+/** Articles run in two states only: 公開 (PUBLISHED) and 下書き (anything else). */
+export function isPublished(status: string | null | undefined): boolean {
+  return status === 'PUBLISHED'
 }
 
 export function statusLabel(status: string): string {
-  return ARTICLE_STATUS_LABELS[status] || status
+  return isPublished(status) ? '公開' : '下書き'
 }
 
 export function statusBadgeClass(status: string): string {
-  return `cf-badge cf-badge--${STATUS_TONES[status] || 'gray'}`
+  return `cf-badge cf-badge--${isPublished(status) ? 'red' : 'gray'}`
 }
 
-/** Statuses offered in the 公開状態 filter, in workflow order. */
-export const STATUS_FILTER_OPTIONS = [
-  'DRAFT',
-  'WAITING_LIST',
-  'WAITING_APPROVAL',
-  'APPROVED',
-  'WORDPRESS_DRAFT',
-  'PUBLISHED',
-  'NEEDS_CORRECTION',
-  'SIMILARITY_WARNING',
-  'RETURNED',
-  'ON_HOLD',
-  'REJECTED',
-  'WORDPRESS_ERROR',
-]
+/** Statuses offered in the 公開状態 filter. */
+export const STATUS_FILTER_OPTIONS = ['PUBLISHED', 'DRAFT']
 
 export function formatJaDate(iso: string | null | undefined): string {
   if (!iso) return '—'
@@ -156,15 +122,6 @@ export function explainWorkflowError(raw: unknown, fallback = 'エラーが発�
     [/WordPress site not found/i, 'WordPress接続設定が見つかりません'],
     [/No WordPress site configured/i, 'この店舗にWordPress接続が設定されていません'],
     [/No WordPress draft exists|No WordPress draft to publish/i, 'WordPress下書きがまだありません。'],
-    [/must be approved and have a WordPress draft/i, '公開には承認済みかつWordPress下書きが必要です。'],
-    [
-      /similarity check did not pass|regenerate or override/i,
-      '類似率チェックに不合格です。本文を再生成するか、類似警告を解除してから公開してください。',
-    ],
-    [/Cannot create WordPress draft from status/i, '現在の状態からはWordPress下書きを作成できません。'],
-    [/cannot be submitted from status/i, '現在の状態からは承認申請できません。'],
-    [/not awaiting approval/i, 'この記事は承認待ちではありません。'],
-    [/Invalid decision/i, '不正な承認操作です。'],
     [/Invalid refresh token/i, 'リフレッシュトークンが無効です。再ログインしてください。'],
     [/Not Found/i, '指定したデータが見つかりません。'],
     [/Unauthorized/i, '認証が必要です。再ログインしてください。'],

@@ -29,12 +29,21 @@ class PurchaseStatus(str, Enum):
 
 
 class ArticleStatus(str, Enum):
-    """Full lifecycle of a generated article (workflows 5-15)."""
+    """Article state.
 
-    DRAFT = "DRAFT"                        # Freshly generated
-    NEEDS_CORRECTION = "NEEDS_CORRECTION"  # Validation failed
+    Operationally there are only two: DRAFT (下書き) and PUBLISHED (公開).
+    The other members are legacy approval-workflow states; nothing writes them
+    any more, but they stay declared so existing rows and the PostgreSQL
+    ``article_status`` enum type remain valid.
+    """
+
+    DRAFT = "DRAFT"
+    PUBLISHED = "PUBLISHED"
+
+    # --- legacy, read-only ---
+    NEEDS_CORRECTION = "NEEDS_CORRECTION"
     SIMILARITY_WARNING = "SIMILARITY_WARNING"
-    WAITING_LIST = "WAITING_LIST"          # Publication waiting list
+    WAITING_LIST = "WAITING_LIST"
     WAITING_APPROVAL = "WAITING_APPROVAL"
     RETURNED = "RETURNED"
     ON_HOLD = "ON_HOLD"
@@ -42,7 +51,6 @@ class ArticleStatus(str, Enum):
     APPROVED = "APPROVED"
     WORDPRESS_DRAFT = "WORDPRESS_DRAFT"
     WORDPRESS_ERROR = "WORDPRESS_ERROR"
-    PUBLISHED = "PUBLISHED"
 
 
 class JobType(str, Enum):

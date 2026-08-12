@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import type { Article } from '../../api'
-import { plainText, toProxy } from '../../lib/format'
+import { isPublished, plainText, toProxy } from '../../lib/format'
 import { RefreshIcon } from '../../ui/Icons'
-import { Field, PanelTitle, Section } from '../../ui/Layout'
+import { Banner, Field, PanelTitle, Section } from '../../ui/Layout'
+
+/** Matches SIMILARITY_THRESHOLD on the backend; only warns, never blocks. */
+const SIMILARITY_WARN_AT = 0.5
 
 export type ArticleEditState = {
   title: string
@@ -24,7 +27,8 @@ export default function ArticleStep({
   onSave,
   onRegenerate,
   onBack,
-  onNext,
+  onSaveDraft,
+  onPublish,
 }: {
   article: Article | null
   generating: boolean
@@ -37,11 +41,15 @@ export default function ArticleStep({
   onSave: () => void
   onRegenerate: (instruction: string) => void
   onBack: () => void
-  onNext: () => void
+  onSaveDraft: () => void
+  onPublish: () => void
 }) {
   const [mode, setMode] = useState<'preview' | 'edit'>('preview')
   const [instruction, setInstruction] = useState('')
   const version = article?.current_version
+  const similarity = article?.latest_similarity_score ?? null
+  const similarityHigh = similarity !== null && similarity >= SIMILARITY_WARN_AT
+  const published = isPublished(article?.status)
 
   if (generating || !article) {
     return (
@@ -95,14 +103,21 @@ export default function ArticleStep({
           }
         />
 
+        {similarityHigh && (
+          <Banner kind="info">
+            既存記事との類似率が {Math.round((similarity ?? 0) * 100)}%
+            と高めです。このまま公開もできますが、本文の再生成をおすすめします。
+          </Banner>
+        )}
+
         <Section num={1} label="記事タイトル">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <strong style={{ fontSize: 15 }}>
               {plainText(version?.title) || '（タイトル未生成）'}
             </strong>
-            {article.latest_similarity_score !== null && (
-              <span className="cf-badge cf-badge--amber">
-                類似率 {Math.round((article.latest_similarity_score ?? 0) * 100)}%
+            {similarity !== null && (
+              <span className={`cf-badge cf-badge--${similarityHigh ? 'amber' : 'gray'}`}>
+                類似率 {Math.round(similarity * 100)}%
               </span>
             )}
             <span className="cf-badge cf-badge--gray">v{version?.version_no ?? 1}</span>
@@ -214,10 +229,23 @@ export default function ArticleStep({
         >
           抽出内容へ戻る
         </button>
-        <button type="button" className="cf-cta" onClick={onNext} disabled={busy}>
-          <span className="cf-cta__gold" />
-          <span className="cf-cta__body">この内容で確定する</span>
-          <span className="cf-cta__red" />
+        {!published && (
+          <button
+            type="button"
+            className="cf-btn cf-btn--gold cf-btn--lg"
+            onClick={onSaveDraft}
+            disabled={busy}
+          >
+            下書きとして保存
+          </button>
+        )}
+        <button
+          type="button"
+          className="cf-btn cf-btn--navy cf-btn--lg"
+          onClick={onPublish}
+          disabled={busy}
+        >
+          {published ? '公開内容を更新する' : 'この内容で公開する'}
         </button>
       </div>
     </>

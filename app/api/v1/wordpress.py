@@ -12,7 +12,7 @@ from app.core.deps import CurrentUser, DBSession, ensure_store_access, get_arq, 
 from app.core.security import decrypt_secret
 from app.enums import ArticleStatus, JobType
 from app.integrations.wordpress_client import WordPressClient, WordPressError
-from app.models import Article, SimilarityResult, WordPressSite
+from app.models import Article, WordPressSite
 from app.schemas.job import JobCreatedResponse
 from app.services import job_service
 from app.services.wordpress_categories import (
@@ -104,27 +104,22 @@ async def related_posts(
 
 
 @router.post("/{article_id}/draft", response_model=JobCreatedResponse,
-             status_code=status.HTTP_202_ACCEPTED, dependencies=[Depends(require_admin)])
+             status_code=status.HTTP_202_ACCEPTED)
 async def create_wordpress_draft(
     db: DBSession, current_user: CurrentUser, arq: ArqDep, article_id: uuid.UUID
 ) -> JobCreatedResponse:
-    """Enqueue WORDPRESS_DRAFT for an approved / returned / error article.
-
-    Useful when the automatic draft job after approval failed, or to re-push
-    content to WordPress as a draft without going through publish.
-    """
+    """Save the article to WordPress as a draft (下書き)."""
     article = await db.get(Article, article_id)
     if not article:
         raise HTTPException(status_code=404, detail="記事が見つかりません")
-    if article.status not in (
-        ArticleStatus.APPROVED,
-        ArticleStatus.WORDPRESS_DRAFT,
-        ArticleStatus.WORDPRESS_ERROR,
-    ):
+    ensure_store_access(current_user, article.store_id)
+    if article.status == ArticleStatus.PUBLISHED:
         raise HTTPException(
             status_code=400,
-            detail=f"現在の状態（{article.status.value}）からはWordPress下書きを作成できません",
+            detail="この記事は既に公開済みです。下書きに戻す場合はWordPress側で操作してください",
         )
+    if not article.current_version_id:
+        raise HTTPException(status_code=400, detail="記事本文がありません")
     site = await _resolve_site(db, article)
     if not site:
         raise HTTPException(status_code=400, detail="この店舗にWordPress接続が設定されていません")
@@ -138,35 +133,25 @@ async def create_wordpress_draft(
 
 
 @router.post("/{article_id}/publish", response_model=JobCreatedResponse,
-             status_code=status.HTTP_202_ACCEPTED, dependencies=[Depends(require_admin)])
+             status_code=status.HTTP_202_ACCEPTED)
 async def publish_article(
     db: DBSession, current_user: CurrentUser, arq: ArqDep, article_id: uuid.UUID
 ) -> JobCreatedResponse:
-    """Workflow 13: verify preconditions then enqueue WORDPRESS_PUBLISH."""
+    """Publish the article to WordPress (公開).
+
+    The worker creates the post when no WordPress draft exists yet, so staff can
+    publish straight from the generation wizard. A failed similarity check only
+    produces a warning in the UI and never blocks publishing.
+    """
     article = await db.get(Article, article_id)
     if not article:
         raise HTTPException(status_code=404, detail="記事が見つかりません")
-
-    # Verify approval + existing WordPress draft + similarity result.
-    if article.status not in (ArticleStatus.WORDPRESS_DRAFT, ArticleStatus.APPROVED):
-        raise HTTPException(status_code=400, detail="公開するには記事が承認済みで、WordPress下書きが必要です")
-    if not article.wordpress_post_id:
-        raise HTTPException(status_code=400, detail="WordPress下書きがまだありません。先に下書き作成を実行してください")
+    ensure_store_access(current_user, article.store_id)
     if not article.current_version_id:
         raise HTTPException(status_code=400, detail="記事本文がありません")
-
-    sim = await db.execute(
-        select(SimilarityResult)
-        .where(SimilarityResult.article_id == article_id)
-        .order_by(SimilarityResult.created_at.desc())
-        .limit(1)
-    )
-    latest = sim.scalar_one_or_none()
-    if latest and not latest.passed:
-        raise HTTPException(
-            status_code=400,
-            detail="類似率チェックに不合格です。本文を再生成するか、類似警告を解除してから公開してください",
-        )
+    site = await _resolve_site(db, article)
+    if not site:
+        raise HTTPException(status_code=400, detail="この店舗にWordPress接続が設定されていません")
 
     job = await job_service.create_job(
         db, arq, job_type=JobType.WORDPRESS_PUBLISH,
