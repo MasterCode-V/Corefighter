@@ -56,6 +56,7 @@ export function ChevronRight({ size = 15, className }: IconProps) {
   )
 }
 
+/** Pngtree-style upload: arrow over open tray (https://pngtree.com/freepng/file-upload-icon_4718142.html) */
 export function UploadIcon({ size = 26, className }: IconProps) {
   return (
     <svg
@@ -63,18 +64,18 @@ export function UploadIcon({ size = 26, className }: IconProps) {
       height={size}
       viewBox="0 0 24 24"
       fill="none"
-      stroke="#f5c400"
-      strokeWidth="1.8"
+      stroke="var(--gold-deep, #f5c400)"
+      strokeWidth="2.2"
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
       aria-hidden
     >
-      <path d="M12 4v10" />
+      <path d="M12 4v9" />
       <path d="m8 8 4-4 4 4" />
       <path d="M5 20h14" />
-      <path d="M7 17h10" opacity="0.75" />
-      <path d="M9 14h6" opacity="0.55" />
+      <path d="M5 20V15" />
+      <path d="M19 20V15" />
     </svg>
   )
 }
