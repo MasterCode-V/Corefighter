@@ -7,11 +7,14 @@ import {
   editArticle,
   generateArticle,
   getArticle,
+  getArticleTemplate,
   getPurchase,
+  getRelatedPosts,
   listArticles,
   pollJob,
   publishArticle,
   regenerateArticle,
+  updateArticleTemplate,
   updatePurchase,
   uploadImage,
   type Article,
@@ -19,12 +22,13 @@ import {
   type Product,
   type Purchase,
   type PurchaseImage,
+  type RelatedPost,
   type Store,
   type User,
 } from '../api'
 import { explainWorkflowError, todayIso } from '../lib/format'
 import { Banner, Stepper } from '../ui/Layout'
-import ArticleStep, { type ArticleEditState } from './generate/ArticleStep'
+import ArticleStep, { type ArticleEditState, type FooterEditState } from './generate/ArticleStep'
 import BasicStep, { type BasicForm } from './generate/BasicStep'
 import DoneStep from './generate/DoneStep'
 import ReviewStep from './generate/ReviewStep'
@@ -115,6 +119,12 @@ export default function GeneratePage({
     category_suggestion: '',
     tags: '',
   })
+  const [footer, setFooter] = useState<FooterEditState>({
+    phone_general: '',
+    phone_dispatch: '',
+    line_url: '',
+  })
+  const [related, setRelated] = useState<RelatedPost[]>([])
 
   const [busy, setBusy] = useState(false)
   const [hydrating, setHydrating] = useState(Boolean(articleId))
@@ -149,6 +159,35 @@ export default function GeneratePage({
     })
   }, [])
 
+  const loadTemplate = useCallback(
+    async (sid: string) => {
+      if (!sid) return
+      try {
+        const tpl = await getArticleTemplate(token, sid)
+        const r = (tpl.resolved || {}) as Record<string, string>
+        setFooter({
+          phone_general: r.phone_general || '',
+          phone_dispatch: r.phone_dispatch || '',
+          line_url: r.line_url || '',
+        })
+      } catch {
+        /* template is optional */
+      }
+    },
+    [token],
+  )
+
+  const loadRelated = useCallback(
+    async (id: string) => {
+      try {
+        setRelated(await getRelatedPosts(token, id, 4))
+      } catch {
+        setRelated([])
+      }
+    },
+    [token],
+  )
+
   /* ----------------------------------------------------- load for editing */
 
   useEffect(() => {
@@ -166,6 +205,8 @@ export default function GeneratePage({
         if (cancelled) return
         applyArticle(loaded)
         setStoreId(loaded.store_id || '')
+        if (loaded.store_id) void loadTemplate(loaded.store_id)
+        void loadRelated(loaded.id)
         const p = await getPurchase(token, loaded.purchase_id)
         if (cancelled) return
         setPurchase(p)
@@ -190,7 +231,7 @@ export default function GeneratePage({
     return () => {
       cancelled = true
     }
-  }, [articleId, token, applyArticle])
+  }, [articleId, token, applyArticle, loadTemplate, loadRelated])
 
   /* --------------------------------------------------------- product edit */
 
@@ -494,6 +535,8 @@ export default function GeneratePage({
         )
       }
       applyArticle(found)
+      if (found.store_id) void loadTemplate(found.store_id)
+      void loadRelated(found.id)
       pushLog(`記事の準備が完了しました（${found.status}）`)
     } catch (err) {
       setError(explainWorkflowError(err, '記事生成に失敗しました'))
@@ -507,22 +550,34 @@ export default function GeneratePage({
 
   /* ------------------------------------------------------- article editing */
 
+  async function persistArticle() {
+    if (!article) throw new Error('記事がありません')
+    if (article.store_id) {
+      await updateArticleTemplate(token, article.store_id, {
+        phone_general: footer.phone_general || undefined,
+        phone_dispatch: footer.phone_dispatch || undefined,
+        line_url: footer.line_url || undefined,
+      })
+    }
+    const updated = await editArticle(token, article.id, {
+      title: edit.title,
+      body: edit.body,
+      excerpt: edit.excerpt,
+      category_suggestion: edit.category_suggestion || undefined,
+      tag_suggestions: edit.tags
+        .split(/[,、]/)
+        .map((t) => t.trim())
+        .filter(Boolean),
+    })
+    applyArticle(await getArticle(token, updated.id))
+  }
+
   async function saveEdit() {
     if (!article) return
     setBusy(true)
     setError('')
     try {
-      const updated = await editArticle(token, article.id, {
-        title: edit.title,
-        body: edit.body,
-        excerpt: edit.excerpt,
-        category_suggestion: edit.category_suggestion || undefined,
-        tag_suggestions: edit.tags
-          .split(',')
-          .map((t) => t.trim())
-          .filter(Boolean),
-      })
-      applyArticle(await getArticle(token, updated.id))
+      await persistArticle()
       setNotice('記事を保存しました。')
       pushLog('記事を編集して新しいバージョンを作成しました')
     } catch (err) {
@@ -563,6 +618,7 @@ export default function GeneratePage({
     setError('')
     setNotice('')
     try {
+      await persistArticle()
       const { job_id } =
         kind === 'draft'
           ? await createWordpressDraft(token, article.id)
@@ -577,6 +633,7 @@ export default function GeneratePage({
         )
       }
       applyArticle(await getArticle(token, article.id))
+      void loadRelated(article.id)
       setOutcome(kind === 'draft' ? 'draft' : 'published')
       setStep(3)
     } catch (err) {
@@ -667,8 +724,11 @@ export default function GeneratePage({
             log={log}
             wpCategories={wpCategories}
             edit={edit}
+            footer={footer}
+            related={related}
             busy={busy}
             onEditChange={(patch) => setEdit((e) => ({ ...e, ...patch }))}
+            onFooterChange={(patch) => setFooter((f) => ({ ...f, ...patch }))}
             onSave={saveEdit}
             onRegenerate={runRegenerate}
             onBack={() => setStep(1)}

@@ -91,13 +91,14 @@ async def _generate(db, job: Job, ctx, *, regeneration: bool) -> dict:
     )
 
     # Live EXPERIENCE posts tag the store + maker; merge AI tags on top.
-    tags: list[str] = []
-    for t in article_template.build_default_tags(cfg, purchase):
-        if t and t not in tags:
-            tags.append(t)
-    for t in generated.get("tag_suggestions", []) or []:
-        if t and t not in tags:
-            tags.append(t)
+    # Location/area tags (札幌市東区 etc.) are stripped.
+    tags = article_template.filter_content_tags(
+        [
+            *article_template.build_default_tags(cfg, purchase),
+            *(generated.get("tag_suggestions", []) or []),
+        ],
+        cfg,
+    )
 
     data = {
         "title": title,

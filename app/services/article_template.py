@@ -19,9 +19,15 @@ Markup mirrors clean manual EXPERIENCE posts (e.g. post #16118 / #16705 header).
 """
 from __future__ import annotations
 
-from typing import Optional
+import re
+from typing import Iterable, Optional
 
 from app.models import Purchase, Store
+
+# Ward/city/prefecture tags (e.g. 札幌市東区) must not be sent to WordPress.
+_LOCATION_TAG_RE = re.compile(
+    r"(北海道|札幌|横浜|東京|大阪|名古屋|福岡|仙台|市|区|町|村|県|都|郡)"
+)
 
 # ---------------------------------------------------------------------------
 # Global defaults (can be overridden per store via Store.article_config)
@@ -152,8 +158,34 @@ def build_product_line(cfg: dict, purchase: Purchase) -> str:
     return " / ".join(segments)
 
 
+def is_location_tag(tag: str, cfg: Optional[dict] = None) -> bool:
+    """True for area/city tags such as 札幌市東区. Store names like 東米里店 are kept."""
+    t = (tag or "").strip()
+    if not t:
+        return True
+    if t.endswith("店"):
+        return False
+    area = ((cfg or {}).get("area") or "").strip()
+    if area and (t == area or t in area or area in t):
+        return True
+    return bool(_LOCATION_TAG_RE.search(t))
+
+
+def filter_content_tags(tags: Iterable[str], cfg: Optional[dict] = None) -> list[str]:
+    """Drop empty and location tags; keep store / maker / product tags."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in tags or []:
+        t = str(raw).strip()
+        if not t or t in seen or is_location_tag(t, cfg):
+            continue
+        seen.add(t)
+        out.append(t)
+    return out
+
+
 def build_default_tags(cfg: dict, purchase: Purchase) -> list[str]:
-    """Tags used on live posts: store label (e.g. 東米里店) + makers."""
+    """Tags used on live posts: store label (e.g. 東米里店) + makers. No area tags."""
     tags: list[str] = []
     label = (cfg.get("label") or "").strip()
     if label:
@@ -163,7 +195,7 @@ def build_default_tags(cfg: dict, purchase: Purchase) -> list[str]:
         maker = (pr.get("manufacturer") or "").strip()
         if maker and maker not in tags:
             tags.append(maker)
-    return tags
+    return filter_content_tags(tags, cfg)
 
 
 def build_excerpt(cfg: dict, purchase: Purchase, *, ai_excerpt: Optional[str] = None) -> str:

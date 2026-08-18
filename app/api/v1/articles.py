@@ -335,13 +335,14 @@ async def edit_article(
         "excerpt": body.excerpt if body.excerpt is not None else current.excerpt,
         "category_suggestion": body.category_suggestion
         if body.category_suggestion is not None else current.category_suggestion,
-        "tag_suggestions": body.tag_suggestions
-        if body.tag_suggestions is not None else current.tag_suggestions,
+        "tag_suggestions": article_template.filter_content_tags(
+            body.tag_suggestions if body.tag_suggestions is not None else current.tag_suggestions,
+        ),
     }
 
-    # If the caller edited the body/title but did NOT supply full rendered HTML,
-    # rebuild it from the template so the fixed heading/thanks/footer stay intact.
-    if body.rendered_html is None and body.body is not None:
+    # Rebuild assembled HTML so heading / thanks / footer (phones, LINE)
+    # always match the latest store template, unless the caller sent full HTML.
+    if body.rendered_html is None:
         store = await db.get(Store, article.store_id)
         cfg = article_template.resolve_config(store)
         heading = article_template.build_heading(cfg)

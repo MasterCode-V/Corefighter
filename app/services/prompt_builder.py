@@ -123,7 +123,8 @@ BUYERSBOX_JSON_SCHEMA = (
     "category_suggestion (string: one or more names from the allowed WordPress "
     "product category list, joined with Japanese comma 「、」 "
     "e.g. 建材、ペアコイル),\n"
-    "tag_suggestions (array of 3-6 Japanese strings: maker, product type, store area)."
+    "tag_suggestions (array of 2-5 Japanese strings: maker and product type only. "
+    "Do NOT include city, ward, prefecture, or area names such as 札幌市東区 / 豊平区)."
 )
 
 # Few-shot bodies distilled from real EXPERIENCE posts (variable part only).

@@ -463,7 +463,8 @@ export type ArticleTemplate = {
   persona_intro?: string
   phone_general?: string
   phone_dispatch?: string
-  footer_html?: string
+    line_url?: string
+    footer_html?: string
 }
 
 export async function getArticleTemplate(token: string, storeId: string) {

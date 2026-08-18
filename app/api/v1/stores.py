@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from pydantic import BaseModel
 
-from app.core.deps import CurrentUser, DBSession, ensure_store_access, require_admin, require_manager
+from app.core.deps import CurrentUser, DBSession, ensure_store_access, require_admin
 from app.core.security import encrypt_secret
 from app.enums import UserRole
 from app.models import Store, WordPressSite
@@ -99,8 +99,7 @@ async def get_article_template(
     return {"resolved": cfg, "overrides": store.article_config or {}}
 
 
-@router.patch("/{store_id}/article-template", response_model=StoreRead,
-              dependencies=[Depends(require_manager)])
+@router.patch("/{store_id}/article-template", response_model=StoreRead)
 async def update_article_template(
     db: DBSession, current_user: CurrentUser, store_id: uuid.UUID, body: ArticleTemplateUpdate
 ) -> Store:

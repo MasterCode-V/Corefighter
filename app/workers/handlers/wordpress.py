@@ -240,15 +240,14 @@ async def _build_payload(db, article: Article, version: ArticleVersion, client: 
     payload["categories"] = cat_ids
 
     # Always attach store tag (+ makers) so the post appears under the store
-    # section on /experience (東苗穂店 / 豊平店 / 東米里店).
+    # section on /experience (東苗穂店 / 豊平店 / 東米里店). No location tags.
     tag_names: list[str] = []
     if purchase is not None:
-        for t in article_template.build_default_tags(cfg, purchase):
-            if t and t not in tag_names:
-                tag_names.append(t)
-    for t in version.tag_suggestions or []:
-        if t and t not in tag_names:
-            tag_names.append(t)
+        tag_names.extend(article_template.build_default_tags(cfg, purchase))
+    tag_names = article_template.filter_content_tags(
+        [*tag_names, *(version.tag_suggestions or [])],
+        cfg,
+    )
     if tag_names:
         try:
             payload["tags"] = await client.ensure_tags(tag_names)
