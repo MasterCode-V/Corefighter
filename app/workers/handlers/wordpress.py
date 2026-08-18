@@ -103,7 +103,7 @@ async def _upload_featured_image(db, article: Article, client: WordPressClient) 
     except Exception as exc:
         raise ValueError(
             f"アイキャッチ画像のアップロードに失敗しました（{main.storage_key}）: {exc}。"
-            "MinIOが起動していること、画像キーが存在することを確認してください。"
+            "MinIO上の画像とWordPress接続を確認してください。"
         ) from exc
     main.wordpress_media_id = media["id"]
     await db.flush()

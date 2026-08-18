@@ -9,6 +9,7 @@ Note: Some hosts (including XSERVER) strip the Authorization header on
 from __future__ import annotations
 
 import base64
+import re
 from typing import Any, List, Optional
 from urllib.parse import parse_qsl, urlencode
 
@@ -17,6 +18,29 @@ import httpx
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+_UNSAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _ascii_media_filename(filename: str) -> str:
+    """HTTP Content-Disposition must be Latin-1/ASCII.
+
+    Original camera names often include Japanese (e.g. スクリーンショット.png).
+    Putting those in the header raises:
+    ``'ascii' codec can't encode characters ... ordinal not in range(128)``.
+    """
+    name = (filename or "image.jpg").replace("\\", "/").split("/")[-1]
+    name = name.replace('"', "").replace("\r", "").replace("\n", "")
+    ext = "jpg"
+    if "." in name:
+        maybe = name.rsplit(".", 1)[-1].lower()
+        if re.fullmatch(r"[a-z0-9]{1,8}", maybe):
+            ext = maybe
+        stem = name.rsplit(".", 1)[0]
+    else:
+        stem = name
+    stem = _UNSAFE_FILENAME.sub("_", stem).strip("._") or "image"
+    return f"{stem[:80]}.{ext}"
 
 
 class WordPressError(Exception):
@@ -80,8 +104,9 @@ class WordPressClient:
 
     # ---- Media ----
     async def upload_media(self, data: bytes, filename: str, content_type: str) -> dict:
+        safe_name = _ascii_media_filename(filename)
         headers = {
-            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Disposition": f'attachment; filename="{safe_name}"',
             "Content-Type": content_type or "application/octet-stream",
         }
         return await self._request("POST", "/media", content=data, headers=headers)
