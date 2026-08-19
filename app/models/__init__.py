@@ -5,6 +5,7 @@ from app.models.store import Store, WordPressSite
 from app.models.persona import Persona
 from app.models.content_rule import ContentRule
 from app.models.purchase import Purchase, PurchaseImage, PurchaseProduct
+from app.models.purchase_method import PurchaseMethod
 from app.models.article import Article, ArticleVersion
 from app.models.embedding import PublishedCorpus, CorpusEmbedding
 from app.models.similarity import SimilarityResult
@@ -22,6 +23,7 @@ __all__ = [
     "Purchase",
     "PurchaseImage",
     "PurchaseProduct",
+    "PurchaseMethod",
     "Article",
     "ArticleVersion",
     "PublishedCorpus",

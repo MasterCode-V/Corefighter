@@ -251,7 +251,7 @@ async def article_stats(db: DBSession, current_user: CurrentUser) -> list[StoreA
     counts_stmt = _scope_filter(counts_stmt, current_user)
     rows = (await db.execute(counts_stmt)).all()
 
-    stores_stmt = select(Store).order_by(Store.created_at)
+    stores_stmt = select(Store).order_by(Store.sort_order, Store.name)
     if current_user.role != UserRole.ADMIN and current_user.store_id:
         stores_stmt = stores_stmt.where(Store.id == current_user.store_id)
     stores = list((await db.execute(stores_stmt)).scalars().all())

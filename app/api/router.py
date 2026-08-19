@@ -8,6 +8,7 @@ from app.api.v1 import (
     jobs,
     media,
     personas,
+    purchase_methods,
     purchases,
     stores,
     users,
@@ -18,6 +19,9 @@ api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(users.router, prefix="/users", tags=["users"])
 api_router.include_router(stores.router, prefix="/stores", tags=["stores"])
+api_router.include_router(
+    purchase_methods.router, prefix="/purchase-methods", tags=["purchase-methods"]
+)
 api_router.include_router(personas.router, prefix="/personas", tags=["personas"])
 api_router.include_router(content_rules.router, prefix="/content-rules", tags=["content-rules"])
 api_router.include_router(purchases.router, prefix="/purchases", tags=["purchases"])

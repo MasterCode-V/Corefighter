@@ -22,7 +22,19 @@ export type Store = {
   id: string
   name: string
   code: string
+  sort_order?: number
+  is_active?: boolean
   article_config?: Record<string, unknown>
+}
+
+export type PurchaseMethod = {
+  id: string
+  label: string
+  sort_order: number
+  is_active: boolean
+  requires_area: boolean
+  linked_store_id: string | null
+  created_at?: string
 }
 
 export type Persona = {
@@ -170,6 +182,95 @@ export async function me(token: string) {
 export async function listStores(token: string) {
   const res = await fetch(`${API}/stores`, { headers: authHeaders(token) })
   return parse<Store[]>(res)
+}
+
+export async function createStore(
+  token: string,
+  data: {
+    name: string
+    code: string
+    address?: string
+    description?: string
+    sort_order?: number
+    article_config?: Record<string, unknown>
+  },
+) {
+  const res = await fetch(`${API}/stores`, {
+    method: 'POST',
+    headers: jsonHeaders(token),
+    body: JSON.stringify(data),
+  })
+  return parse<Store>(res)
+}
+
+export async function updateStore(
+  token: string,
+  id: string,
+  data: {
+    name?: string
+    address?: string
+    description?: string
+    is_active?: boolean
+    sort_order?: number
+    article_config?: Record<string, unknown>
+  },
+) {
+  const res = await fetch(`${API}/stores/${id}`, {
+    method: 'PATCH',
+    headers: jsonHeaders(token),
+    body: JSON.stringify(data),
+  })
+  return parse<Store>(res)
+}
+
+export async function listPurchaseMethods(token: string) {
+  const res = await fetch(`${API}/purchase-methods`, { headers: authHeaders(token) })
+  return parse<PurchaseMethod[]>(res)
+}
+
+export async function createPurchaseMethod(
+  token: string,
+  data: {
+    label: string
+    sort_order?: number
+    is_active?: boolean
+    requires_area?: boolean
+    linked_store_id?: string | null
+  },
+) {
+  const res = await fetch(`${API}/purchase-methods`, {
+    method: 'POST',
+    headers: jsonHeaders(token),
+    body: JSON.stringify(data),
+  })
+  return parse<PurchaseMethod>(res)
+}
+
+export async function updatePurchaseMethod(
+  token: string,
+  id: string,
+  data: {
+    label?: string
+    sort_order?: number
+    is_active?: boolean
+    requires_area?: boolean
+    linked_store_id?: string | null
+  },
+) {
+  const res = await fetch(`${API}/purchase-methods/${id}`, {
+    method: 'PATCH',
+    headers: jsonHeaders(token),
+    body: JSON.stringify(data),
+  })
+  return parse<PurchaseMethod>(res)
+}
+
+export async function deletePurchaseMethod(token: string, id: string) {
+  const res = await fetch(`${API}/purchase-methods/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  })
+  if (!res.ok) await parse(res)
 }
 
 export async function listPersonas(token: string, includeInactive = false) {
@@ -463,8 +564,8 @@ export type ArticleTemplate = {
   persona_intro?: string
   phone_general?: string
   phone_dispatch?: string
-    line_url?: string
-    footer_html?: string
+  line_url?: string
+  footer_html?: string
 }
 
 export async function getArticleTemplate(token: string, storeId: string) {

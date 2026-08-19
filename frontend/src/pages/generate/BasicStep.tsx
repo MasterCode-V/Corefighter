@@ -1,9 +1,14 @@
-import type { Persona, PurchaseImage, Store } from '../../api'
+import type { Persona, PurchaseImage, PurchaseMethod, Store } from '../../api'
 import { useEffect, useRef, useState } from 'react'
+import {
+  activePurchaseMethods,
+  methodRequiresArea,
+  shopStores,
+} from '../../lib/purchaseMethods'
 import { DotsIcon, LinkIcon, PlusIcon } from '../../ui/Icons'
 import { Field, PanelTitle, Section } from '../../ui/Layout'
 import { DetailImagePicker, MainImagePicker } from './ImagePicker'
-import { CONDITION_OPTIONS, PURCHASE_METHODS, areaIsManual, type ProductRow } from './types'
+import { CONDITION_OPTIONS, type ProductRow } from './types'
 
 export type BasicForm = {
   purchase_date: string
@@ -13,6 +18,7 @@ export type BasicForm = {
 
 export default function BasicStep({
   stores,
+  purchaseMethods,
   personas,
   storeId,
   personaId,
@@ -22,6 +28,7 @@ export default function BasicStep({
   mainImages,
   busy,
   canPickStore,
+  storeLocked,
   onStoreChange,
   onPersonaChange,
   onFormChange,
@@ -38,6 +45,7 @@ export default function BasicStep({
   onSaveDraft,
 }: {
   stores: Store[]
+  purchaseMethods: PurchaseMethod[]
   personas: Persona[]
   storeId: string
   personaId: string
@@ -47,6 +55,7 @@ export default function BasicStep({
   mainImages: PurchaseImage[]
   busy: boolean
   canPickStore: boolean
+  storeLocked: boolean
   onStoreChange: (id: string) => void
   onPersonaChange: (id: string) => void
   onFormChange: (patch: Partial<BasicForm>) => void
@@ -62,7 +71,10 @@ export default function BasicStep({
   onAnalyze: () => void
   onSaveDraft: () => void
 }) {
-  const manualArea = areaIsManual(form.purchase_method)
+  const methods = activePurchaseMethods(purchaseMethods)
+  const manualArea = methodRequiresArea(purchaseMethods, form.purchase_method)
+  const selectableStores = shopStores(stores, purchaseMethods).filter((s) => s.is_active !== false)
+  const lockedStore = stores.find((s) => s.id === storeId)
   const [openMenu, setOpenMenu] = useState<number | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -111,13 +123,13 @@ export default function BasicStep({
                 onChange={(e) =>
                   onFormChange({
                     purchase_method: e.target.value,
-                    purchase_area: areaIsManual(e.target.value) ? '' : '—',
+                    purchase_area: methodRequiresArea(purchaseMethods, e.target.value) ? '' : '—',
                   })
                 }
               >
-                {PURCHASE_METHODS.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
+                {methods.map((m) => (
+                  <option key={m.id} value={m.label}>
+                    {m.label}
                   </option>
                 ))}
               </select>
@@ -133,19 +145,29 @@ export default function BasicStep({
                 />
               </Field>
             )}
-            <Field label="掲載店舗" required>
+            <Field
+              label="掲載店舗"
+              required
+              hint={
+                storeLocked
+                  ? `「${form.purchase_method}」は ${lockedStore?.name || '指定店舗'} に固定されます`
+                  : undefined
+              }
+            >
               <select
                 className="cf-select"
                 value={storeId}
-                disabled={!canPickStore}
+                disabled={!canPickStore || storeLocked}
                 onChange={(e) => onStoreChange(e.target.value)}
               >
                 <option value="">選択してください</option>
-                {stores.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
+                {(storeLocked ? stores.filter((s) => s.id === storeId) : selectableStores).map(
+                  (s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ),
+                )}
               </select>
             </Field>
           </div>

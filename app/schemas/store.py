@@ -12,6 +12,7 @@ class StoreBase(BaseModel):
     code: str
     address: str = ""
     description: str = ""
+    sort_order: int = 0
     article_config: dict = Field(default_factory=dict)
 
 
@@ -24,6 +25,7 @@ class StoreUpdate(BaseModel):
     address: Optional[str] = None
     description: Optional[str] = None
     is_active: Optional[bool] = None
+    sort_order: Optional[int] = None
     article_config: Optional[dict] = None
 
 

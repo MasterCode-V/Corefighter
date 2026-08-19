@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   listPersonas,
+  listPurchaseMethods,
   listStores,
   listWordpressCategories,
   login as apiLogin,
   me,
   type Persona,
+  type PurchaseMethod,
   type Store,
   type User,
 } from './api'
@@ -24,10 +26,29 @@ export default function App() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY))
   const [user, setUser] = useState<User | null>(null)
   const [stores, setStores] = useState<Store[]>([])
+  const [purchaseMethods, setPurchaseMethods] = useState<PurchaseMethod[]>([])
   const [personas, setPersonas] = useState<Persona[]>([])
   const [wpCategories, setWpCategories] = useState<Array<{ id: number; name: string }>>([])
   const [bootError, setBootError] = useState('')
   const [route, navigate] = useRoute()
+
+  const loadStores = useCallback(async () => {
+    if (!token) return
+    try {
+      setStores(await listStores(token))
+    } catch {
+      /* non fatal */
+    }
+  }, [token])
+
+  const loadPurchaseMethods = useCallback(async () => {
+    if (!token) return
+    try {
+      setPurchaseMethods(await listPurchaseMethods(token))
+    } catch {
+      /* non fatal */
+    }
+  }, [token])
 
   const loadPersonas = useCallback(async () => {
     if (!token) return
@@ -46,13 +67,15 @@ export default function App() {
         const current = await me(token)
         if (cancelled) return
         setUser(current)
-        const [s, p, cats] = await Promise.all([
+        const [s, pm, p, cats] = await Promise.all([
           listStores(token),
+          listPurchaseMethods(token).catch(() => []),
           listPersonas(token),
           listWordpressCategories(token, true).catch(() => []),
         ])
         if (cancelled) return
         setStores(s)
+        setPurchaseMethods(pm)
         setPersonas(p)
         setWpCategories(cats)
       } catch (err) {
@@ -130,6 +153,7 @@ export default function App() {
           token={token}
           user={user}
           stores={stores}
+          purchaseMethods={purchaseMethods}
           personas={personas}
           wpCategories={wpCategories}
           articleId={route.articleId}
@@ -156,6 +180,10 @@ export default function App() {
             currentUser={user}
             stores={stores}
             onPersonasChanged={loadPersonas}
+            onStoresChanged={() => {
+              void loadStores()
+              void loadPurchaseMethods()
+            }}
           />
         ) : (
           <div className="cf-page">

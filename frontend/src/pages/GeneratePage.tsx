@@ -22,18 +22,23 @@ import {
   type Product,
   type Purchase,
   type PurchaseImage,
+  type PurchaseMethod,
   type RelatedPost,
   type Store,
   type User,
 } from '../api'
 import { explainWorkflowError, todayIso } from '../lib/format'
+import {
+  methodRequiresArea,
+  shopStores,
+  storeIdForMethod,
+} from '../lib/purchaseMethods'
 import { Banner, Stepper } from '../ui/Layout'
 import ArticleStep, { type ArticleEditState, type FooterEditState } from './generate/ArticleStep'
 import BasicStep, { type BasicForm } from './generate/BasicStep'
 import DoneStep from './generate/DoneStep'
 import ReviewStep from './generate/ReviewStep'
 import {
-  areaIsManual,
   buildUserInstructions,
   emptyProduct,
   type ProductRow,
@@ -77,6 +82,7 @@ export default function GeneratePage({
   token,
   user,
   stores,
+  purchaseMethods,
   personas,
   wpCategories,
   articleId,
@@ -87,6 +93,7 @@ export default function GeneratePage({
   token: string
   user: User
   stores: Store[]
+  purchaseMethods: PurchaseMethod[]
   personas: Persona[]
   wpCategories: Array<{ id: number; name: string }>
   articleId?: string
@@ -123,6 +130,7 @@ export default function GeneratePage({
     phone_general: '',
     phone_dispatch: '',
     line_url: '',
+    footer_html: '',
   })
   const [related, setRelated] = useState<RelatedPost[]>([])
 
@@ -136,8 +144,19 @@ export default function GeneratePage({
   const [outcome, setOutcome] = useState<'draft' | 'published' | null>(null)
 
   useEffect(() => {
-    if (!storeId && stores.length) setStoreId(user.store_id || stores[0].id)
-  }, [stores, storeId, user.store_id])
+    if (!storeId && stores.length) {
+      const shops = shopStores(stores, purchaseMethods)
+      setStoreId(user.store_id || shops[0]?.id || stores[0].id)
+    }
+  }, [stores, storeId, user.store_id, purchaseMethods])
+
+  const linkedStoreId = storeIdForMethod(purchaseMethods, form.purchase_method)
+  const storeLocked = Boolean(linkedStoreId)
+
+  useEffect(() => {
+    if (!linkedStoreId) return
+    if (storeId !== linkedStoreId) setStoreId(linkedStoreId)
+  }, [linkedStoreId, storeId])
 
   useEffect(() => {
     if (!personaId && personas.length) setPersonaId(personas[0].id)
@@ -169,6 +188,7 @@ export default function GeneratePage({
           phone_general: r.phone_general || '',
           phone_dispatch: r.phone_dispatch || '',
           line_url: r.line_url || '',
+          footer_html: r.footer_html || '',
         })
       } catch {
         /* template is optional */
@@ -349,7 +369,7 @@ export default function GeneratePage({
         (p) => p.manufacturer || p.product_name || p.model_number || p.condition,
       )
       const area =
-        form.purchase_area.trim() || (areaIsManual(form.purchase_method) ? '' : '—')
+        form.purchase_area.trim() || (methodRequiresArea(purchaseMethods, form.purchase_method) ? '' : '—')
       const payload = {
         persona_id: personaId || null,
         purchase_date: form.purchase_date || undefined,
@@ -557,6 +577,7 @@ export default function GeneratePage({
         phone_general: footer.phone_general || undefined,
         phone_dispatch: footer.phone_dispatch || undefined,
         line_url: footer.line_url || undefined,
+        footer_html: footer.footer_html || undefined,
       })
     }
     const updated = await editArticle(token, article.id, {
@@ -673,6 +694,7 @@ export default function GeneratePage({
         {!hydrating && step === 0 && (
           <BasicStep
             stores={stores}
+            purchaseMethods={purchaseMethods}
             personas={personas}
             storeId={storeId}
             personaId={personaId}
@@ -682,6 +704,7 @@ export default function GeneratePage({
             mainImages={mainImages}
             busy={busy}
             canPickStore={isAdmin || !user.store_id}
+            storeLocked={storeLocked}
             onStoreChange={setStoreId}
             onPersonaChange={setPersonaId}
             onFormChange={(patch) => setForm((f) => ({ ...f, ...patch }))}

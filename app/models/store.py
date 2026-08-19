@@ -18,6 +18,7 @@ class Store(UUIDMixin, TimestampMixin, Base):
     address: Mapped[str] = mapped_column(String(512), default="")
     description: Mapped[str] = mapped_column(Text, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # Store-specific article template overrides (label, area, footer html, etc.).
     # Merged over the global defaults in app.services.article_template.

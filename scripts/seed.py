@@ -13,7 +13,7 @@ from app.core.database import AsyncSessionFactory, engine
 from app.core.logging import get_logger
 from app.core.security import hash_password
 from app.enums import ContentRuleType, UserRole
-from app.models import ContentRule, Persona, Store, User
+from app.models import ContentRule, Persona, PurchaseMethod, Store, User
 
 logger = get_logger("seed")
 
@@ -38,27 +38,85 @@ async def seed() -> None:
             {
                 "name": "パワフルトレードセンター 豊平店",
                 "code": "toyohira",
+                "sort_order": 1,
                 "address": "北海道札幌市豊平区豊平3条9丁目3-10 エムズ豊平１F",
                 "article_config": {"label": "豊平", "area": "札幌市豊平区"},
             },
             {
                 "name": "パワフルトレードセンター 東苗穂店",
                 "code": "naebo",
+                "sort_order": 2,
                 "address": "北海道札幌市東区東苗穂3条1丁目3-45 コスモロイヤル東苗穂A棟 1F",
                 "article_config": {"label": "東苗穂", "area": "札幌市東区"},
             },
             {
                 "name": "パワフルトレードセンター 東米里店",
                 "code": "yonesato",
+                "sort_order": 3,
                 "address": "北海道札幌市白石区東米里2090-170",
                 "article_config": {"label": "東米里", "area": "札幌市白石区"},
+            },
+            {
+                "name": "デリパワ",
+                "code": "deripower",
+                "sort_order": 4,
+                "article_config": {"label": "デリパワ", "area": ""},
+            },
+            {
+                "name": "宅配買取",
+                "code": "takuhai",
+                "sort_order": 5,
+                "article_config": {"label": "宅配買取", "area": ""},
             },
         ]
         for data in pawatore_stores:
             exists = await db.execute(select(Store).where(Store.code == data["code"]))
-            if exists.scalar_one_or_none() is None:
+            row = exists.scalar_one_or_none()
+            if row is None:
                 db.add(Store(**data))
                 logger.info("Created store %s", data["name"])
+            else:
+                for k, v in data.items():
+                    setattr(row, k, v)
+                logger.info("Updated store %s", data["name"])
+
+        # ---- Purchase methods (買取方法 ↔ 掲載店舗) ----
+        store_by_code = {
+            s.code: s.id
+            for s in (await db.execute(select(Store))).scalars().all()
+        }
+        methods_to_seed = [
+            {
+                "label": "店頭",
+                "sort_order": 1,
+                "requires_area": False,
+                "linked_store_id": None,
+            },
+            {
+                "label": "出張",
+                "sort_order": 2,
+                "requires_area": True,
+                "linked_store_id": store_by_code.get("deripower"),
+            },
+            {
+                "label": "宅配",
+                "sort_order": 3,
+                "requires_area": True,
+                "linked_store_id": store_by_code.get("takuhai"),
+            },
+        ]
+        for mdata in methods_to_seed:
+            exists = await db.execute(
+                select(PurchaseMethod).where(PurchaseMethod.label == mdata["label"])
+            )
+            row = exists.scalar_one_or_none()
+            if row is None:
+                db.add(PurchaseMethod(**mdata))
+                logger.info("Created purchase method %s", mdata["label"])
+            else:
+                for k, v in mdata.items():
+                    setattr(row, k, v)
+                logger.info("Updated purchase method %s", mdata["label"])
 
         # ---- Personas (buyersbox EXPERIENCE styles) ----
         personas_to_seed = [

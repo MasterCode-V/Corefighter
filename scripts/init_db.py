@@ -32,6 +32,7 @@ UPGRADE_SQL = [
     "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS quantity_unit VARCHAR(16) DEFAULT '点' NOT NULL",
     "ALTER TABLE article_versions ADD COLUMN IF NOT EXISTS rendered_html TEXT DEFAULT ''",
     "ALTER TABLE purchase_images ADD COLUMN IF NOT EXISTS product_index INTEGER",
+    "ALTER TABLE stores ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0 NOT NULL",
 ]
 
 

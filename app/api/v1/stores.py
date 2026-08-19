@@ -49,7 +49,9 @@ class ArticleTemplateUpdate(BaseModel):
 
 @router.get("", response_model=list[StoreRead])
 async def list_stores(db: DBSession, current_user: CurrentUser) -> list[Store]:
-    stmt = select(Store).order_by(Store.name)
+    stmt = select(Store).order_by(Store.sort_order, Store.name)
+    if current_user.role != UserRole.ADMIN:
+        stmt = stmt.where(Store.is_active.is_(True))
     if current_user.role != UserRole.ADMIN and current_user.store_id:
         stmt = stmt.where(Store.id == current_user.store_id)
     result = await db.execute(stmt)

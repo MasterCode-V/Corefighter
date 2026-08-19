@@ -3,6 +3,7 @@ import type { Article, RelatedPost } from '../../api'
 import { isPublished, plainText, toProxy } from '../../lib/format'
 import { RefreshIcon } from '../../ui/Icons'
 import { Banner, Field, PanelTitle, Section } from '../../ui/Layout'
+import RichTextEditor from '../../ui/RichTextEditor'
 
 /** Matches SIMILARITY_THRESHOLD on the backend; only warns, never blocks. */
 const SIMILARITY_WARN_AT = 0.5
@@ -19,6 +20,7 @@ export type FooterEditState = {
   phone_general: string
   phone_dispatch: string
   line_url: string
+  footer_html: string
 }
 
 function splitCategories(value: string): string[] {
@@ -220,8 +222,8 @@ export default function ArticleStep({
 
         <Section
           num={3}
-          label="記事フッター（電話・LINE）"
-          note="この店舗の全記事に使われる定型文です。電話番号を変えると次回以降の記事にも反映されます。"
+          label="記事フッター（電話・LINE・キャンペーン文）"
+          note="この店舗の全記事に使われる定型文です。太字・リンク・サイズ変更ができます。{phone_general} 等のプレースホルダは保存時に電話番号へ置換されます。"
         >
           <div className="cf-grid-2">
             <Field label="総合ダイヤル">
@@ -244,6 +246,14 @@ export default function ArticleStep({
               className="cf-input"
               value={footer.line_url}
               onChange={(e) => onFooterChange({ line_url: e.target.value })}
+            />
+          </Field>
+          <Field label="フッターHTML（キャンペーン文・追加リンクなど）">
+            <RichTextEditor
+              value={footer.footer_html}
+              onChange={(html) => onFooterChange({ footer_html: html })}
+              disabled={busy}
+              placeholder="例：期間限定キャンペーンのお知らせ…"
             />
           </Field>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
