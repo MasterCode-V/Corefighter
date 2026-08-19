@@ -70,6 +70,7 @@ async def update_purchase_method(
 @router.delete(
     "/{method_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
     dependencies=[Depends(require_admin)],
 )
 async def delete_purchase_method(db: DBSession, method_id: uuid.UUID) -> None:
