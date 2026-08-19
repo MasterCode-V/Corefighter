@@ -44,7 +44,6 @@ export default function ReviewStep({
           title="抽出内容の確認"
           sub="画像から読み取った内容です。誤りがあれば記事生成の前に修正してください。"
           double
-          rule={false}
         />
 
         {missingNameIndexes.length > 0 && (

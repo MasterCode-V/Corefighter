@@ -41,7 +41,6 @@ export default function DoneStep({
               : 'WordPress に下書きとして保存しました。内容を確認したら公開してください。'
           }
           double
-          rule={false}
         />
 
         {outcome === 'published' && (
