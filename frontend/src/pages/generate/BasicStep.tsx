@@ -80,7 +80,7 @@ export default function BasicStep({
       <div className="cf-panel">
         <PanelTitle title="記事生成の準備" double rule />
 
-        <Section label="基本情報">
+        <Section num={1} label="基本情報">
           <div className="cf-grid-2">
             <Field label="AI人格">
               <select
@@ -151,7 +151,7 @@ export default function BasicStep({
           </div>
         </Section>
 
-        <Section label="メイン画像（記事用）">
+        <Section num={2} label="メイン画像（記事用）">
           <MainImagePicker
             files={mainFiles}
             images={mainImages}
@@ -163,6 +163,7 @@ export default function BasicStep({
         </Section>
 
         <Section
+          num={3}
           label="商品別の詳細画像・情報"
           note="商品ごとにブロックを作成し、対応するラベル画像を登録してください。"
           action={
