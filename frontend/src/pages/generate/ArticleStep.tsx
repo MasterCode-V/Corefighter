@@ -136,7 +136,7 @@ export default function ArticleStep({
           </Banner>
         )}
 
-        <Section label="記事タイトル">
+        <Section num={1} label="記事タイトル">
           <Field label="タイトル">
             <input
               className="cf-input"
@@ -151,7 +151,7 @@ export default function ArticleStep({
           )}
         </Section>
 
-        <Section label={mode === 'preview' ? '本文プレビュー' : '本文の編集'}>
+        <Section num={2} label={mode === 'preview' ? '本文プレビュー' : '本文の編集'}>
           {mode === 'preview' ? (
             <div
               className="cf-preview"
@@ -219,6 +219,7 @@ export default function ArticleStep({
         </Section>
 
         <Section
+          num={3}
           label="記事フッター（電話・LINE）"
           note="この店舗の全記事に使われる定型文です。電話番号を変えると次回以降の記事にも反映されます。"
         >
@@ -253,6 +254,7 @@ export default function ArticleStep({
         </Section>
 
         <Section
+          num={4}
           label="関連記事"
           note="公開サイトと同じく、関連する買取実績を最大4件自動で選びます。"
         >
@@ -278,7 +280,7 @@ export default function ArticleStep({
           )}
         </Section>
 
-        <Section label="再生成" note="指示を添えて本文を書き直せます（履歴は保持されます）。">
+        <Section num={5} label="再生成" note="指示を添えて本文を書き直せます（履歴は保持されます）。">
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
             <input
               className="cf-input"

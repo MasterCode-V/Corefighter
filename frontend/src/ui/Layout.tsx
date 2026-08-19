@@ -193,8 +193,10 @@ export function Section({
   return (
     <section className="cf-section">
       <div className="cf-section__head">
-        {num !== undefined && <span className="cf-section__num">{num}</span>}
-        <span className="cf-section__label">{label}</span>
+        <span className={`cf-section__title${num !== undefined ? ' is-numbered' : ''}`}>
+          {num !== undefined && <span className="cf-section__num">{num}</span>}
+          <span className="cf-section__label">{label}</span>
+        </span>
         <span className="cf-section__spacer" />
         {action}
       </div>

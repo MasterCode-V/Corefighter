@@ -432,17 +432,25 @@ a {
   margin-top: 14px;
 }
 
+.cf-section__head {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.cf-section__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 5px;
+  border-bottom: 2px solid var(--crimson);
+}
+
 .cf-section__label {
   font-size: 13.5px;
   font-weight: 700;
   color: var(--navy-ink);
-}
-
-.cf-section__head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
 }
 
 .cf-section__num {
@@ -465,7 +473,7 @@ a {
 }
 
 .cf-section__head:has(.cf-section__num) + .cf-section__note {
-  margin: -6px 0 12px 27px;
+  margin: -6px 0 12px 0;
 }
 
 .cf-section__spacer {
