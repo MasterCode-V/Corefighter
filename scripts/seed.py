@@ -80,6 +80,8 @@ async def seed() -> None:
                     setattr(row, k, v)
                 logger.info("Updated store %s", data["name"])
 
+        await db.flush()
+
         # ---- Purchase methods (買取方法 ↔ 掲載店舗) ----
         store_by_code = {
             s.code: s.id
