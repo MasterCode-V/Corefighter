@@ -241,12 +241,12 @@ def assemble_html(
     *,
     main_image_url: Optional[str] = None,
     product_line: Optional[str] = None,
+    related_posts: Optional[Iterable[dict]] = None,
 ) -> str:
     """Wrap the AI body with the fixed header + footer to produce the final HTML.
 
     Structure mirrors manual EXPERIENCE posts: centered H2, centered red thanks,
-    centered main image, body, dial/LINE footer. Manual posts carry no centered
-    product subtitle, so ``product_line`` is only used as the image alt text.
+    centered main image, body, optional related block, dial/LINE footer.
     """
     color = cfg.get("thanks_color") or "#ff0000"
     thanks = (
@@ -264,6 +264,54 @@ def assemble_html(
         thanks,
         _image_html(main_image_url, alt),
         (ai_body_html or "").strip(),
+        build_related_html(related_posts),
         footer,
     ]
     return "\n".join(p for p in parts if p)
+
+
+def build_related_html(related_posts: Optional[Iterable[dict]]) -> str:
+    """HTML block for manually selected related articles (max 4)."""
+    items = [r for r in (related_posts or []) if (r.get("title") or "").strip()][:4]
+    if not items:
+        return ""
+    cards: list[str] = []
+    for row in items:
+        title = (row.get("title") or "").strip()
+        link = (row.get("link") or "").strip()
+        thumb = (row.get("thumbnail") or "").strip()
+        img = f'<img src="{thumb}" alt="" />' if thumb else ""
+        inner = f'{img}<span>{title}</span>'
+        if link:
+            cards.append(f'<a class="cf-related-card" href="{link}">{inner}</a>')
+        else:
+            cards.append(f'<div class="cf-related-card">{inner}</div>')
+    return (
+        "<!--cf-related-start-->"
+        '<div class="cf-related-posts">'
+        "<h3>関連する買取実績</h3>"
+        f'<div class="cf-related-posts__grid">{"".join(cards)}</div>'
+        "</div>"
+        "<!--cf-related-end-->"
+    )
+
+
+def inject_related_into_html(html: str, related_posts: Optional[Iterable[dict]]) -> str:
+    """Replace or insert the related block before the dial/LINE footer."""
+    block = build_related_html(related_posts)
+    cleaned = re.sub(
+        r"<!--cf-related-start-->[\s\S]*?<!--cf-related-end-->\s*",
+        "",
+        html or "",
+        count=1,
+    )
+    if not block:
+        return cleaned.strip()
+    marker = "出張買取専用ダイヤル"
+    idx = cleaned.find(marker)
+    if idx >= 0:
+        p_start = cleaned.rfind("<p", 0, idx)
+        if p_start >= 0:
+            return cleaned[:p_start].rstrip() + "\n" + block + "\n" + cleaned[p_start:]
+    return cleaned.rstrip() + "\n" + block
+

@@ -11,11 +11,14 @@ import {
   getPurchase,
   getRelatedPosts,
   listArticles,
+  listWordpressTags,
   pollJob,
   publishArticle,
   regenerateArticle,
+  searchRelatedCandidates,
   updateArticleTemplate,
   updatePurchase,
+  updateRelatedPosts,
   uploadImage,
   type Article,
   type Persona,
@@ -26,6 +29,7 @@ import {
   type RelatedPost,
   type Store,
   type User,
+  type WordpressTag,
 } from '../api'
 import { explainWorkflowError, todayIso } from '../lib/format'
 import {
@@ -133,6 +137,11 @@ export default function GeneratePage({
     footer_html: '',
   })
   const [related, setRelated] = useState<RelatedPost[]>([])
+  const [relatedManual, setRelatedManual] = useState(false)
+  const [relatedCandidates, setRelatedCandidates] = useState<RelatedPost[]>([])
+  const [relatedSearch, setRelatedSearch] = useState('')
+  const [relatedSearching, setRelatedSearching] = useState(false)
+  const [wpTags, setWpTags] = useState<WordpressTag[]>([])
 
   const [busy, setBusy] = useState(false)
   const [hydrating, setHydrating] = useState(Boolean(articleId))
@@ -198,14 +207,37 @@ export default function GeneratePage({
   )
 
   const loadRelated = useCallback(
-    async (id: string) => {
+    async (loaded: Article) => {
+      const manual = Array.isArray(loaded.related_posts) ? loaded.related_posts : []
+      if (manual.length) {
+        setRelatedManual(true)
+        setRelated(manual.slice(0, 4))
+        return
+      }
+      setRelatedManual(false)
       try {
-        setRelated(await getRelatedPosts(token, id, 4))
+        setRelated(await getRelatedPosts(token, loaded.id, 4))
       } catch {
         setRelated([])
       }
     },
     [token],
+  )
+
+  const loadWpTags = useCallback(
+    async (sid?: string) => {
+      try {
+        setWpTags(
+          await listWordpressTags(token, {
+            storeId: sid || storeId || undefined,
+            limit: 100,
+          }),
+        )
+      } catch {
+        setWpTags([])
+      }
+    },
+    [token, storeId],
   )
 
   /* ----------------------------------------------------- load for editing */
@@ -226,7 +258,8 @@ export default function GeneratePage({
         applyArticle(loaded)
         setStoreId(loaded.store_id || '')
         if (loaded.store_id) void loadTemplate(loaded.store_id)
-        void loadRelated(loaded.id)
+        void loadRelated(loaded)
+        void loadWpTags(loaded.store_id)
         const p = await getPurchase(token, loaded.purchase_id)
         if (cancelled) return
         setPurchase(p)
@@ -251,7 +284,7 @@ export default function GeneratePage({
     return () => {
       cancelled = true
     }
-  }, [articleId, token, applyArticle, loadTemplate, loadRelated])
+  }, [articleId, token, applyArticle, loadTemplate, loadRelated, loadWpTags])
 
   /* --------------------------------------------------------- product edit */
 
@@ -555,8 +588,11 @@ export default function GeneratePage({
         )
       }
       applyArticle(found)
-      if (found.store_id) void loadTemplate(found.store_id)
-      void loadRelated(found.id)
+      if (found.store_id) {
+        void loadTemplate(found.store_id)
+        void loadWpTags(found.store_id)
+      }
+      void loadRelated(found)
       pushLog(`記事の準備が完了しました（${found.status}）`)
     } catch (err) {
       setError(explainWorkflowError(err, '記事生成に失敗しました'))
@@ -580,6 +616,10 @@ export default function GeneratePage({
         footer_html: footer.footer_html || undefined,
       })
     }
+    if (relatedManual) {
+      const updatedRelated = await updateRelatedPosts(token, article.id, related)
+      applyArticle(updatedRelated)
+    }
     const updated = await editArticle(token, article.id, {
       title: edit.title,
       body: edit.body,
@@ -591,6 +631,58 @@ export default function GeneratePage({
         .filter(Boolean),
     })
     applyArticle(await getArticle(token, updated.id))
+  }
+
+  async function saveRelatedSelection() {
+    if (!article) return
+    setBusy(true)
+    setError('')
+    try {
+      const updated = await updateRelatedPosts(token, article.id, related)
+      applyArticle(updated)
+      setRelatedManual(related.length > 0)
+      setRelated((updated.related_posts || related).slice(0, 4))
+      setNotice(
+        related.length
+          ? `関連記事を ${related.length} 件保存しました。`
+          : '関連記事の手動選択を解除しました（自動候補に戻ります）。',
+      )
+      pushLog('関連記事の選択を保存しました')
+    } catch (err) {
+      setError(explainWorkflowError(err, '関連記事の保存に失敗しました'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function clearRelatedManual() {
+    setRelated([])
+    setRelatedManual(false)
+    if (!article) return
+    setBusy(true)
+    try {
+      const updated = await updateRelatedPosts(token, article.id, [])
+      applyArticle(updated)
+      await loadRelated(updated)
+      setNotice('関連記事を自動候補に戻しました。')
+    } catch (err) {
+      setError(explainWorkflowError(err, '関連記事の更新に失敗しました'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function runRelatedSearch() {
+    if (!article) return
+    setRelatedSearching(true)
+    try {
+      setRelatedCandidates(await searchRelatedCandidates(token, article.id, relatedSearch, 20))
+    } catch (err) {
+      setError(explainWorkflowError(err, '関連記事の検索に失敗しました'))
+      setRelatedCandidates([])
+    } finally {
+      setRelatedSearching(false)
+    }
   }
 
   async function saveEdit() {
@@ -653,8 +745,9 @@ export default function GeneratePage({
           job.error ? `${label}に失敗しました。理由：${job.error}` : `${label}に失敗しました。`,
         )
       }
-      applyArticle(await getArticle(token, article.id))
-      void loadRelated(article.id)
+      const refreshed = await getArticle(token, article.id)
+      applyArticle(refreshed)
+      void loadRelated(refreshed)
       setOutcome(kind === 'draft' ? 'draft' : 'published')
       setStep(3)
     } catch (err) {
@@ -678,6 +771,10 @@ export default function GeneratePage({
     setNotice('')
     setError('')
     setLog([])
+    setRelated([])
+    setRelatedManual(false)
+    setRelatedCandidates([])
+    setRelatedSearch('')
     setForm({ purchase_date: todayIso(), purchase_method: '店頭', purchase_area: '—' })
     onOpenArticle(undefined)
   }
@@ -746,12 +843,25 @@ export default function GeneratePage({
             jobStatus={jobStatus}
             log={log}
             wpCategories={wpCategories}
+            wpTags={wpTags}
             edit={edit}
             footer={footer}
             related={related}
+            relatedManual={relatedManual}
+            relatedCandidates={relatedCandidates}
+            relatedSearch={relatedSearch}
+            relatedSearching={relatedSearching}
             busy={busy}
             onEditChange={(patch) => setEdit((e) => ({ ...e, ...patch }))}
             onFooterChange={(patch) => setFooter((f) => ({ ...f, ...patch }))}
+            onRelatedChange={(items) => {
+              setRelated(items.slice(0, 4))
+              setRelatedManual(true)
+            }}
+            onRelatedSearchChange={setRelatedSearch}
+            onRelatedSearch={() => void runRelatedSearch()}
+            onSaveRelated={() => void saveRelatedSelection()}
+            onClearRelatedManual={() => void clearRelatedManual()}
             onSave={saveEdit}
             onRegenerate={runRegenerate}
             onBack={() => setStep(1)}

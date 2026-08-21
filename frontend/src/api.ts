@@ -130,6 +130,7 @@ export type Article = {
   wordpress_post_id?: number | null
   published_url?: string | null
   review_note?: string | null
+  related_posts?: RelatedPost[]
   current_version: ArticleVersion | null
 }
 
@@ -549,11 +550,18 @@ export async function editArticle(token: string, id: string, data: ArticleEdit) 
 
 export type RelatedPost = {
   id: number | null
+  article_id?: string | null
   title: string
   link: string
   date: string
   thumbnail: string | null
   score: number | null
+}
+
+export type WordpressTag = {
+  id: number
+  name: string
+  count: number
 }
 
 export type ArticleTemplate = {
@@ -593,6 +601,54 @@ export async function getRelatedPosts(token: string, articleId: string, limit = 
     headers: authHeaders(token),
   })
   return parse<RelatedPost[]>(res)
+}
+
+export async function searchRelatedCandidates(
+  token: string,
+  articleId: string,
+  q = '',
+  limit = 20,
+) {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (q.trim()) params.set('q', q.trim())
+  const res = await fetch(`${API}/articles/${articleId}/related-candidates?${params}`, {
+    headers: authHeaders(token),
+  })
+  return parse<RelatedPost[]>(res)
+}
+
+export async function updateRelatedPosts(token: string, articleId: string, items: RelatedPost[]) {
+  const res = await fetch(`${API}/articles/${articleId}/related`, {
+    method: 'PUT',
+    headers: jsonHeaders(token),
+    body: JSON.stringify({
+      items: items.slice(0, 4).map((p) => ({
+        id: p.id,
+        article_id: p.article_id || null,
+        title: p.title,
+        link: p.link,
+        date: p.date,
+        thumbnail: p.thumbnail,
+        score: p.score,
+      })),
+    }),
+  })
+  return parse<Article>(res)
+}
+
+export async function listWordpressTags(
+  token: string,
+  opts: { search?: string; storeId?: string; limit?: number } = {},
+) {
+  const q = new URLSearchParams()
+  if (opts.search) q.set('search', opts.search)
+  if (opts.storeId) q.set('store_id', opts.storeId)
+  if (opts.limit) q.set('limit', String(opts.limit))
+  const qs = q.toString()
+  const res = await fetch(`${API}/wordpress/tags${qs ? `?${qs}` : ''}`, {
+    headers: authHeaders(token),
+  })
+  return parse<WordpressTag[]>(res)
 }
 
 export async function listArticlesByStatus(token: string, status?: string, limit = 50) {

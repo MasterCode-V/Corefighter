@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.deps import CurrentUser, DBSession, ensure_store_access, get_arq, require_admin
 from app.core.security import decrypt_secret
-from app.enums import ArticleStatus, JobType
+from app.enums import ArticleStatus, JobType, UserRole
 from app.integrations.wordpress_client import WordPressClient, WordPressError
 from app.models import Article, WordPressSite
 from app.schemas.job import JobCreatedResponse
@@ -28,6 +28,7 @@ ArqDep = Annotated[ArqRedis, Depends(get_arq)]
 
 class RelatedPost(BaseModel):
     id: Optional[int] = None
+    article_id: Optional[uuid.UUID] = None
     title: str = ""
     link: str = ""
     date: str = ""
@@ -39,6 +40,12 @@ class WordpressCategory(BaseModel):
     id: int
     name: str
     is_product: bool = True
+
+
+class WordpressTag(BaseModel):
+    id: int
+    name: str
+    count: int = 0
 
 
 @router.get("/categories", response_model=List[WordpressCategory])
@@ -55,6 +62,39 @@ async def list_wordpress_categories(
             continue
         rows.append(WordpressCategory(id=row["id"], name=row["name"], is_product=is_product))
     return rows
+
+
+@router.get("/tags", response_model=List[WordpressTag])
+async def list_wordpress_tags(
+    db: DBSession,
+    current_user: CurrentUser,
+    search: Optional[str] = Query(None),
+    store_id: Optional[uuid.UUID] = None,
+    limit: int = Query(100, ge=1, le=200),
+) -> List[WordpressTag]:
+    """List existing WordPress tags so staff can pick from the live catalog."""
+    stmt = select(WordPressSite).where(WordPressSite.is_active.is_(True))
+    if store_id:
+        ensure_store_access(current_user, store_id)
+        stmt = stmt.where(WordPressSite.store_id == store_id)
+    elif current_user.role != UserRole.ADMIN and current_user.store_id:
+        stmt = stmt.where(WordPressSite.store_id == current_user.store_id)
+    site = (await db.execute(stmt.limit(1))).scalar_one_or_none()
+    if not site:
+        return []
+
+    client = WordPressClient(
+        site.base_url, site.username, decrypt_secret(site.encrypted_app_password)
+    )
+    try:
+        raw = await client.list_tags(search=search, limit=limit)
+    except WordPressError:
+        return []
+    return [
+        WordpressTag(id=int(t["id"]), name=str(t.get("name") or ""), count=int(t.get("count") or 0))
+        for t in raw
+        if t.get("id") and t.get("name")
+    ]
 
 
 async def _resolve_site(db, article: Article) -> Optional[WordPressSite]:
@@ -80,16 +120,38 @@ async def related_posts(
 ) -> List[RelatedPost]:
     """Return up to ``limit`` related articles (default 4).
 
-    Prefers WordPress YARPP when the article already has a WP post id.
-    Otherwise (or if YARPP is empty/unavailable) falls back to recent
-    published CORE FIGHTER articles so the editor can still preview four cards.
+    Prefer manually saved selections when present. Otherwise use WordPress YARPP
+    (when a WP post id exists) and fall back to recent published CORE FIGHTER
+    articles so the editor can still preview four cards.
     """
     article = await db.get(Article, article_id)
     if not article:
         raise HTTPException(status_code=404, detail="記事が見つかりません")
     ensure_store_access(current_user, article.store_id)
 
-    items: List[RelatedPost] = []
+    manual = list(article.related_posts or [])
+    if manual:
+        items: List[RelatedPost] = []
+        for row in manual[:limit]:
+            aid = row.get("article_id")
+            try:
+                article_uuid = uuid.UUID(str(aid)) if aid else None
+            except (TypeError, ValueError):
+                article_uuid = None
+            items.append(
+                RelatedPost(
+                    id=row.get("id"),
+                    article_id=article_uuid,
+                    title=row.get("title") or "",
+                    link=row.get("link") or "",
+                    date=row.get("date") or "",
+                    thumbnail=row.get("thumbnail"),
+                    score=row.get("score"),
+                )
+            )
+        return items
+
+    items = []
     if article.wordpress_post_id:
         site = await _resolve_site(db, article)
         if site:
@@ -148,6 +210,7 @@ async def _local_related(
         out.append(
             RelatedPost(
                 id=a.wordpress_post_id,
+                article_id=a.id,
                 title=title,
                 link=link,
                 date=date,

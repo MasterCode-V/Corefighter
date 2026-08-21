@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timedelta
 from typing import Annotated, List, Optional
@@ -27,6 +28,8 @@ from app.schemas.article import (
     ArticleRead,
     ArticleVersionRead,
     RegenerateRequest,
+    RelatedPostItem,
+    RelatedPostsUpdate,
     StoreArticleStats,
 )
 from app.schemas.job import JobCreatedResponse
@@ -368,6 +371,7 @@ async def edit_article(
             merged["body"],
             main_image_url=main_url,
             product_line=product_line,
+            related_posts=article.related_posts or [],
         )
 
     await article_service.create_version(db, article, data=merged, is_manual_edit=True)
@@ -377,6 +381,146 @@ async def edit_article(
             db, arq, job_type=JobType.WORDPRESS_UPDATE,
             article_id=article.id, created_by=current_user.id,
         )
+    await db.commit()
+    return await _get_article(db, article_id)
+
+
+@router.get("/{article_id}/related-candidates", response_model=list[RelatedPostItem])
+async def related_candidates(
+    db: DBSession,
+    current_user: CurrentUser,
+    article_id: uuid.UUID,
+    q: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=50),
+) -> list[RelatedPostItem]:
+    """Search published articles that can be picked as related posts."""
+    article = await _get_article(db, article_id)
+    ensure_store_access(current_user, article.store_id)
+
+    stmt = (
+        select(Article)
+        .options(selectinload(Article.current_version))
+        .where(
+            Article.id != article_id,
+            Article.status == ArticleStatus.PUBLISHED,
+        )
+        .order_by(Article.updated_at.desc())
+        .limit(limit * 3)
+    )
+    stmt = _scope_filter(stmt, current_user)
+    rows = list((await db.execute(stmt)).scalars().all())
+
+    needle = (q or "").strip().lower()
+    out: list[RelatedPostItem] = []
+    for row in rows:
+        title = (row.current_version.title if row.current_version else "") or ""
+        plain = re.sub(r"<[^>]+>", "", title).replace("&nbsp;", " ").strip()
+        if needle and needle not in plain.lower() and needle not in (row.published_url or "").lower():
+            continue
+        date = ""
+        if row.published_at:
+            date = row.published_at.isoformat()
+        elif row.updated_at:
+            date = row.updated_at.isoformat()
+        out.append(
+            RelatedPostItem(
+                id=row.wordpress_post_id,
+                article_id=row.id,
+                title=plain or title,
+                link=row.published_url or "",
+                date=date,
+                thumbnail=None,
+                score=None,
+            )
+        )
+        if len(out) >= limit:
+            break
+    return out
+
+
+@router.put("/{article_id}/related", response_model=ArticleRead)
+async def update_related_posts(
+    db: DBSession,
+    current_user: CurrentUser,
+    arq: ArqDep,
+    article_id: uuid.UUID,
+    body: RelatedPostsUpdate,
+) -> Article:
+    """Save up to 4 manually selected related articles and refresh rendered HTML."""
+    article = await _get_article(db, article_id)
+    ensure_store_access(current_user, article.store_id)
+
+    items = []
+    for row in (body.items or [])[:4]:
+        title = (row.title or "").strip()
+        if not title:
+            continue
+        items.append(
+            {
+                "id": row.id,
+                "article_id": str(row.article_id) if row.article_id else None,
+                "title": title,
+                "link": (row.link or "").strip(),
+                "date": row.date or "",
+                "thumbnail": row.thumbnail,
+                "score": row.score,
+            }
+        )
+    article.related_posts = items
+
+    current = article.current_version
+    if current:
+        store = await db.get(Store, article.store_id)
+        cfg = article_template.resolve_config(store)
+        heading = article_template.build_heading(cfg)
+        pres = await db.execute(
+            select(Purchase)
+            .options(selectinload(Purchase.images), selectinload(Purchase.products))
+            .where(Purchase.id == article.purchase_id)
+        )
+        purchase = pres.scalar_one_or_none()
+        main_url = None
+        product_line = None
+        if purchase:
+            if purchase.images:
+                images = sorted(
+                    purchase.images,
+                    key=lambda i: (i.image_type != ImageType.ARTICLE, i.sort_order),
+                )
+                main_url = images[0].url
+            product_line = article_template.build_product_line(cfg, purchase)
+        rendered = article_template.assemble_html(
+            cfg,
+            heading,
+            current.body,
+            main_image_url=main_url,
+            product_line=product_line,
+            related_posts=items,
+        )
+        await article_service.create_version(
+            db,
+            article,
+            data={
+                "title": current.title,
+                "introduction": current.introduction,
+                "headings": current.headings,
+                "body": current.body,
+                "rendered_html": rendered,
+                "excerpt": current.excerpt,
+                "category_suggestion": current.category_suggestion,
+                "tag_suggestions": current.tag_suggestions,
+            },
+            is_manual_edit=True,
+        )
+        if article.wordpress_post_id:
+            await job_service.create_job(
+                db,
+                arq,
+                job_type=JobType.WORDPRESS_UPDATE,
+                article_id=article.id,
+                created_by=current_user.id,
+            )
+
     await db.commit()
     return await _get_article(db, article_id)
 

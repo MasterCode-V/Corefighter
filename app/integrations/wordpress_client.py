@@ -190,6 +190,21 @@ class WordPressClient:
             ids.append(match)
         return ids
 
+    async def list_tags(self, search: Optional[str] = None, limit: int = 100) -> List[dict]:
+        """Return existing WordPress tags (paginated, optional search)."""
+        per_page = min(max(limit, 1), 100)
+        query = {
+            "per_page": str(per_page),
+            "orderby": "count",
+            "order": "desc",
+            "hide_empty": "false",
+        }
+        if search:
+            query["search"] = search
+        path = "/tags?" + urlencode(query)
+        rows = await self._request("GET", path)
+        return list(rows or [])[:limit]
+
     # ---- YARPP related posts (Yet Another Related Posts Plugin) ----
     async def get_related_posts(self, post_id: int, limit: int = 4) -> List[dict]:
         """Fetch the related posts YARPP computes for a given post.

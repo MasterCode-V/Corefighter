@@ -60,6 +60,10 @@ class Article(UUIDMixin, TimestampMixin, Base):
     reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     review_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # Manually chosen related posts (max 4). Empty = use auto suggestions in UI.
+    # Each item: {id?, article_id?, title, link, date, thumbnail?}
+    related_posts: Mapped[list] = mapped_column(JSONB, default=list)
+
     purchase: Mapped["Purchase"] = relationship(back_populates="article")  # noqa: F821
     versions: Mapped[List["ArticleVersion"]] = relationship(
         back_populates="article",

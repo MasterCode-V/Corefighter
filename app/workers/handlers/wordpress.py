@@ -191,6 +191,9 @@ async def _build_payload(db, article: Article, version: ArticleVersion, client: 
     media_id = media["id"]
 
     content = _inject_wp_featured_image(_render_content(version), media)
+    content = article_template.inject_related_into_html(
+        content, getattr(article, "related_posts", None) or []
+    )
 
     # Categories: always EXPERIENCE + any selected/suggested product categories
     # (multiple allowed, e.g. EXPERIENCE + 建材 + ペアコイル).

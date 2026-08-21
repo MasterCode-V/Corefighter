@@ -44,9 +44,26 @@ class ArticleRead(BaseModel):
     published_url: Optional[str]
     published_at: Optional[datetime]
     review_note: Optional[str]
+    related_posts: list = []
     created_at: datetime
     updated_at: datetime
     current_version: Optional[ArticleVersionRead] = None
+
+
+class RelatedPostItem(BaseModel):
+    """One related-article card (manual pick or auto suggestion)."""
+
+    id: Optional[int] = None
+    article_id: Optional[uuid.UUID] = None
+    title: str = ""
+    link: str = ""
+    date: str = ""
+    thumbnail: Optional[str] = None
+    score: Optional[float] = None
+
+
+class RelatedPostsUpdate(BaseModel):
+    items: List[RelatedPostItem] = []
 
 
 class ArticleListItem(BaseModel):

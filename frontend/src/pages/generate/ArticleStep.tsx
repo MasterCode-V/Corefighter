@@ -1,12 +1,13 @@
-import { useState } from 'react'
-import type { Article, RelatedPost } from '../../api'
+import { useEffect, useMemo, useState } from 'react'
+import type { Article, RelatedPost, WordpressTag } from '../../api'
 import { isPublished, plainText, toProxy } from '../../lib/format'
-import { RefreshIcon } from '../../ui/Icons'
+import { RefreshIcon, SearchIcon, TrashIcon } from '../../ui/Icons'
 import { Banner, Field, PanelTitle, Section } from '../../ui/Layout'
 import RichTextEditor from '../../ui/RichTextEditor'
 
 /** Matches SIMILARITY_THRESHOLD on the backend; only warns, never blocks. */
 const SIMILARITY_WARN_AT = 0.5
+const MAX_RELATED = 4
 
 export type ArticleEditState = {
   title: string
@@ -23,11 +24,15 @@ export type FooterEditState = {
   footer_html: string
 }
 
-function splitCategories(value: string): string[] {
+function splitList(value: string): string[] {
   return value
     .split(/[,、]/)
     .map((s) => s.trim())
     .filter(Boolean)
+}
+
+function relatedKey(post: RelatedPost): string {
+  return post.article_id || (post.id != null ? `wp-${post.id}` : `${post.link}-${post.title}`)
 }
 
 export default function ArticleStep({
@@ -36,12 +41,22 @@ export default function ArticleStep({
   jobStatus,
   log,
   wpCategories,
+  wpTags,
   edit,
   footer,
   related,
+  relatedManual,
+  relatedCandidates,
+  relatedSearch,
+  relatedSearching,
   busy,
   onEditChange,
   onFooterChange,
+  onRelatedChange,
+  onRelatedSearchChange,
+  onRelatedSearch,
+  onSaveRelated,
+  onClearRelatedManual,
   onSave,
   onRegenerate,
   onBack,
@@ -53,12 +68,22 @@ export default function ArticleStep({
   jobStatus: string
   log: string[]
   wpCategories: Array<{ id: number; name: string }>
+  wpTags: WordpressTag[]
   edit: ArticleEditState
   footer: FooterEditState
   related: RelatedPost[]
+  relatedManual: boolean
+  relatedCandidates: RelatedPost[]
+  relatedSearch: string
+  relatedSearching: boolean
   busy: boolean
   onEditChange: (patch: Partial<ArticleEditState>) => void
   onFooterChange: (patch: Partial<FooterEditState>) => void
+  onRelatedChange: (items: RelatedPost[]) => void
+  onRelatedSearchChange: (q: string) => void
+  onRelatedSearch: () => void
+  onSaveRelated: () => void
+  onClearRelatedManual: () => void
   onSave: () => void
   onRegenerate: (instruction: string) => void
   onBack: () => void
@@ -67,17 +92,49 @@ export default function ArticleStep({
 }) {
   const [mode, setMode] = useState<'preview' | 'edit'>('preview')
   const [instruction, setInstruction] = useState('')
+  const [tagFilter, setTagFilter] = useState('')
   const version = article?.current_version
   const similarity = article?.latest_similarity_score ?? null
   const similarityHigh = similarity !== null && similarity >= SIMILARITY_WARN_AT
   const published = isPublished(article?.status)
-  const selectedCats = splitCategories(edit.category_suggestion)
+  const selectedCats = splitList(edit.category_suggestion)
+  const selectedTags = splitList(edit.tags)
+
+  const filteredWpTags = useMemo(() => {
+    const needle = tagFilter.trim().toLowerCase()
+    const rows = wpTags.filter((t) => t.name.trim())
+    if (!needle) return rows.slice(0, 60)
+    return rows.filter((t) => t.name.toLowerCase().includes(needle)).slice(0, 60)
+  }, [wpTags, tagFilter])
+
+  useEffect(() => {
+    if (!relatedManual && related.length === 0) return
+  }, [relatedManual, related.length])
 
   function toggleCategory(name: string) {
     const next = selectedCats.includes(name)
       ? selectedCats.filter((n) => n !== name)
       : [...selectedCats, name]
     onEditChange({ category_suggestion: next.join('、') })
+  }
+
+  function setTags(next: string[]) {
+    onEditChange({ tags: next.join('、') })
+  }
+
+  function toggleTag(name: string) {
+    if (selectedTags.includes(name)) setTags(selectedTags.filter((t) => t !== name))
+    else setTags([...selectedTags, name])
+  }
+
+  function addRelated(post: RelatedPost) {
+    if (related.length >= MAX_RELATED) return
+    if (related.some((r) => relatedKey(r) === relatedKey(post))) return
+    onRelatedChange([...related, post].slice(0, MAX_RELATED))
+  }
+
+  function removeRelated(post: RelatedPost) {
+    onRelatedChange(related.filter((r) => relatedKey(r) !== relatedKey(post)))
   }
 
   if (generating || !article) {
@@ -199,10 +256,57 @@ export default function ArticleStep({
                   ))}
                 </div>
               </Field>
-              <Field label="タグ" hint="カンマ区切り。場所（市区町村）は付けないでください。">
+              <Field
+                label="タグ"
+                hint="既存タグから選択できます。手入力も可能です（カンマ区切り）。場所（市区町村）は付けないでください。"
+              >
+                {selectedTags.length > 0 && (
+                  <div className="cf-tagrow" style={{ marginBottom: 10 }}>
+                    {selectedTags.map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        className="cf-tagchip is-selected"
+                        onClick={() => toggleTag(t)}
+                        title="クリックで外す"
+                      >
+                        {t} ×
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="cf-input-search" style={{ marginBottom: 8 }}>
+                  <input
+                    className="cf-input"
+                    value={tagFilter}
+                    placeholder="既存タグを検索"
+                    onChange={(e) => setTagFilter(e.target.value)}
+                  />
+                  <SearchIcon />
+                </div>
+                {filteredWpTags.length > 0 ? (
+                  <div className="cf-tagrow" style={{ marginBottom: 10 }}>
+                    {filteredWpTags.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        className={`cf-tagchip${selectedTags.includes(t.name) ? ' is-selected' : ''}`}
+                        onClick={() => toggleTag(t.name)}
+                      >
+                        {t.name}
+                        {t.count > 0 ? ` (${t.count})` : ''}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="cf-section__note" style={{ margin: '0 0 8px' }}>
+                    既存タグを取得できませんでした。下の欄に手入力してください。
+                  </p>
+                )}
                 <input
                   className="cf-input"
                   value={edit.tags}
+                  placeholder="例：東苗穂店、VVF、電線"
                   onChange={(e) => onEditChange({ tags: e.target.value })}
                 />
               </Field>
@@ -266,28 +370,107 @@ export default function ArticleStep({
         <Section
           num={4}
           label="関連記事"
-          note="公開サイトと同じく、関連する買取実績を最大4件自動で選びます。"
+          note="最大4件。自動候補を使うか、公開済み記事から手動で選べます。手動選択は公開HTMLにも反映されます。"
         >
+          <div className="cf-related-toolbar">
+            <span className={`cf-badge ${relatedManual ? 'cf-badge--navyline' : 'cf-badge--gray'}`}>
+              {relatedManual ? '手動選択' : '自動候補'}
+            </span>
+            <span className="cf-section__note" style={{ margin: 0 }}>
+              {related.length}/{MAX_RELATED} 件
+            </span>
+            {relatedManual && (
+              <button
+                type="button"
+                className="cf-btn cf-btn--ghost cf-btn--sm"
+                onClick={onClearRelatedManual}
+                disabled={busy}
+              >
+                自動に戻す
+              </button>
+            )}
+          </div>
+
           {related.length === 0 ? (
-            <p className="cf-section__note" style={{ margin: 0 }}>
-              まだ候補がありません。下書き保存または公開のあと、WordPress側の関連記事も表示されます。
+            <p className="cf-section__note" style={{ margin: '0 0 12px' }}>
+              まだ選ばれていません。下の検索から追加するか、公開後に自動候補を利用できます。
             </p>
           ) : (
-            <div className="cf-related">
-              {related.slice(0, 4).map((post, i) => (
-                <a
-                  key={post.id ?? `${post.link}-${i}`}
-                  className="cf-related__card"
-                  href={post.link || undefined}
-                  target={post.link ? '_blank' : undefined}
-                  rel="noreferrer"
-                >
+            <div className="cf-related" style={{ marginBottom: 14 }}>
+              {related.slice(0, MAX_RELATED).map((post, i) => (
+                <div key={relatedKey(post) || i} className="cf-related__card cf-related__card--edit">
                   {post.thumbnail && <img src={post.thumbnail} alt="" />}
                   <span className="cf-related__title">{plainText(post.title)}</span>
-                </a>
+                  <button
+                    type="button"
+                    className="cf-iconbtn"
+                    aria-label="関連記事から外す"
+                    onClick={() => removeRelated(post)}
+                    disabled={busy}
+                  >
+                    <TrashIcon />
+                  </button>
+                </div>
               ))}
             </div>
           )}
+
+          <Field label="公開済み記事から追加" hint="タイトルで検索して選択（最大4件）">
+            <div style={{ display: 'flex', gap: 8 }}>
+              <span className="cf-input-search" style={{ flex: 1 }}>
+                <input
+                  className="cf-input"
+                  value={relatedSearch}
+                  placeholder="キーワードで検索"
+                  onChange={(e) => onRelatedSearchChange(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && onRelatedSearch()}
+                />
+                <SearchIcon />
+              </span>
+              <button
+                type="button"
+                className="cf-btn cf-btn--outline"
+                onClick={onRelatedSearch}
+                disabled={busy || relatedSearching}
+              >
+                {relatedSearching ? '検索中…' : '検索'}
+              </button>
+            </div>
+          </Field>
+
+          {relatedCandidates.length > 0 && (
+            <div className="cf-related-candidates">
+              {relatedCandidates.map((c) => {
+                const already = related.some((r) => relatedKey(r) === relatedKey(c))
+                const full = related.length >= MAX_RELATED
+                return (
+                  <button
+                    key={relatedKey(c)}
+                    type="button"
+                    className="cf-related-candidate"
+                    disabled={busy || already || full}
+                    onClick={() => addRelated(c)}
+                  >
+                    <span>{plainText(c.title)}</span>
+                    <span className="cf-related-candidate__action">
+                      {already ? '選択済' : full ? '上限' : '追加'}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+            <button
+              type="button"
+              className="cf-btn cf-btn--navy"
+              onClick={onSaveRelated}
+              disabled={busy}
+            >
+              関連記事を保存
+            </button>
+          </div>
         </Section>
 
         <Section num={5} label="再生成" note="指示を添えて本文を書き直せます（履歴は保持されます）。">

@@ -33,6 +33,7 @@ UPGRADE_SQL = [
     "ALTER TABLE article_versions ADD COLUMN IF NOT EXISTS rendered_html TEXT DEFAULT ''",
     "ALTER TABLE purchase_images ADD COLUMN IF NOT EXISTS product_index INTEGER",
     "ALTER TABLE stores ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0 NOT NULL",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS related_posts JSONB DEFAULT '[]'::jsonb",
 ]
 
 
