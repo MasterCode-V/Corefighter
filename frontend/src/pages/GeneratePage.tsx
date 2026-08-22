@@ -286,6 +286,25 @@ export default function GeneratePage({
     }
   }, [articleId, token, applyArticle, loadTemplate, loadRelated, loadWpTags])
 
+  useEffect(() => {
+    if (step !== 2 || !article) return
+    let cancelled = false
+    ;(async () => {
+      setRelatedSearching(true)
+      try {
+        const rows = await searchRelatedCandidates(token, article.id, '', 20)
+        if (!cancelled) setRelatedCandidates(rows)
+      } catch {
+        if (!cancelled) setRelatedCandidates([])
+      } finally {
+        if (!cancelled) setRelatedSearching(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [step, article?.id, token])
+
   /* --------------------------------------------------------- product edit */
 
   function patchProduct(index: number, patch: Partial<ProductRow>) {

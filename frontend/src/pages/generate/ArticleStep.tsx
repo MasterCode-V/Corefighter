@@ -370,7 +370,7 @@ export default function ArticleStep({
         <Section
           num={4}
           label="関連記事"
-          note="最大4件。自動候補を使うか、公開済み記事から手動で選べます。手動選択は公開HTMLにも反映されます。"
+          note="最大4件。自動候補を使うか、WordPress公開済み記事から手動で選べます。手動選択は公開HTMLにも反映されます。"
         >
           <div className="cf-related-toolbar">
             <span className={`cf-badge ${relatedManual ? 'cf-badge--navyline' : 'cf-badge--gray'}`}>
@@ -415,13 +415,16 @@ export default function ArticleStep({
             </div>
           )}
 
-          <Field label="公開済み記事から追加" hint="タイトルで検索して選択（最大4件）">
+          <Field
+            label="WordPress公開済み記事から追加"
+            hint="buyersboxの買取実績（EXPERIENCE）からキーワード検索。未入力で検索すると直近の公開記事を表示します。"
+          >
             <div style={{ display: 'flex', gap: 8 }}>
               <span className="cf-input-search" style={{ flex: 1 }}>
                 <input
                   className="cf-input"
                   value={relatedSearch}
-                  placeholder="キーワードで検索"
+                  placeholder="例：Makita、電線、VCTF"
                   onChange={(e) => onRelatedSearchChange(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && onRelatedSearch()}
                 />
@@ -437,6 +440,14 @@ export default function ArticleStep({
               </button>
             </div>
           </Field>
+
+          {!relatedSearching && relatedCandidates.length === 0 && (
+            <p className="cf-section__note" style={{ margin: '8px 0 0' }}>
+              {relatedSearch.trim()
+                ? '該当するWordPress公開記事が見つかりませんでした。別のキーワードをお試しください。'
+                : '検索ボタンを押すと、WordPressの直近公開記事が候補として表示されます。'}
+            </p>
+          )}
 
           {relatedCandidates.length > 0 && (
             <div className="cf-related-candidates">

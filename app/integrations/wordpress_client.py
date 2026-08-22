@@ -143,6 +143,39 @@ class WordPressClient:
         total_pages = int(resp.headers.get("X-WP-TotalPages", 1))
         return resp.json(), total_pages
 
+    async def search_posts(
+        self,
+        *,
+        search: Optional[str] = None,
+        categories: Optional[List[int]] = None,
+        per_page: int = 20,
+        exclude_id: Optional[int] = None,
+    ) -> List[dict]:
+        """Search published WordPress posts (used for manual related-article picker)."""
+        params: dict[str, Any] = {
+            "status": "publish",
+            "per_page": min(max(per_page, 1), 50),
+            "orderby": "date",
+            "order": "desc",
+            "_embed": "wp:featuredmedia",
+        }
+        if search:
+            params["search"] = search
+        if categories:
+            params["categories"] = ",".join(str(c) for c in categories)
+        url = self._rest_url("/wp/v2/posts", params)
+        headers = {**self._headers, **self._auth_headers()}
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.get(url, headers=headers)
+        if resp.status_code >= 400:
+            raise WordPressError(f"search_posts failed: {resp.status_code} {resp.text[:300]}")
+        rows = resp.json() if resp.content else []
+        if not isinstance(rows, list):
+            return []
+        if exclude_id:
+            rows = [r for r in rows if r.get("id") != exclude_id]
+        return rows
+
     # ---- Taxonomy ----
     async def list_categories(self, hide_empty: bool = False) -> list[dict]:
         page = 1

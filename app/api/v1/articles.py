@@ -12,7 +12,9 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, DBSession, ensure_store_access, get_arq
+from app.core.security import decrypt_secret
 from app.enums import ArticleStatus, ImageType, JobType, RegenerationScope, UserRole
+from app.integrations.wordpress_client import WordPressClient, WordPressError
 from app.models import (
     Article,
     ArticleVersion,
@@ -20,6 +22,7 @@ from app.models import (
     PurchaseProduct,
     SimilarityResult,
     Store,
+    WordPressSite,
 )
 from app.schemas.article import (
     ArticleEditRequest,
@@ -35,6 +38,7 @@ from app.schemas.article import (
 from app.schemas.job import JobCreatedResponse
 from app.schemas.similarity import SimilarityResultRead
 from app.services import article_service, article_template, job_service
+from app.services.wordpress_categories import EXPERIENCE_CATEGORY_ID
 
 router = APIRouter()
 ArqDep = Annotated[ArqRedis, Depends(get_arq)]
@@ -385,18 +389,28 @@ async def edit_article(
     return await _get_article(db, article_id)
 
 
-@router.get("/{article_id}/related-candidates", response_model=list[RelatedPostItem])
-async def related_candidates(
+async def _resolve_wp_site(db, article: Article) -> Optional[WordPressSite]:
+    if article.wordpress_site_id:
+        site = await db.get(WordPressSite, article.wordpress_site_id)
+        if site:
+            return site
+    result = await db.execute(
+        select(WordPressSite).where(
+            WordPressSite.store_id == article.store_id,
+            WordPressSite.is_active.is_(True),
+        ).limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _cf_published_candidates(
     db: DBSession,
     current_user: CurrentUser,
     article_id: uuid.UUID,
-    q: Optional[str] = Query(None),
-    limit: int = Query(20, ge=1, le=50),
+    needle: str,
+    limit: int,
 ) -> list[RelatedPostItem]:
-    """Search published articles that can be picked as related posts."""
-    article = await _get_article(db, article_id)
-    ensure_store_access(current_user, article.store_id)
-
+    """Fallback: search CORE FIGHTER articles already marked published."""
     stmt = (
         select(Article)
         .options(selectinload(Article.current_version))
@@ -410,12 +424,12 @@ async def related_candidates(
     stmt = _scope_filter(stmt, current_user)
     rows = list((await db.execute(stmt)).scalars().all())
 
-    needle = (q or "").strip().lower()
+    lower = needle.lower()
     out: list[RelatedPostItem] = []
     for row in rows:
         title = (row.current_version.title if row.current_version else "") or ""
         plain = re.sub(r"<[^>]+>", "", title).replace("&nbsp;", " ").strip()
-        if needle and needle not in plain.lower() and needle not in (row.published_url or "").lower():
+        if lower and lower not in plain.lower() and lower not in (row.published_url or "").lower():
             continue
         date = ""
         if row.published_at:
@@ -435,6 +449,98 @@ async def related_candidates(
         )
         if len(out) >= limit:
             break
+    return out
+
+
+@router.get("/{article_id}/related-candidates", response_model=list[RelatedPostItem])
+async def related_candidates(
+    db: DBSession,
+    current_user: CurrentUser,
+    article_id: uuid.UUID,
+    q: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=50),
+) -> list[RelatedPostItem]:
+    """Search WordPress published posts (EXPERIENCE) for manual related-article picks."""
+    article = await _get_article(db, article_id)
+    ensure_store_access(current_user, article.store_id)
+
+    needle = (q or "").strip()
+    out: list[RelatedPostItem] = []
+    seen_wp_ids: set[int] = set()
+    seen_links: set[str] = set()
+
+    site = await _resolve_wp_site(db, article)
+    if site:
+        client = WordPressClient(
+            site.base_url, site.username, decrypt_secret(site.encrypted_app_password)
+        )
+        try:
+            rows = await client.search_posts(
+                search=needle or None,
+                categories=[EXPERIENCE_CATEGORY_ID],
+                per_page=limit,
+                exclude_id=article.wordpress_post_id,
+            )
+            normalized = WordPressClient.normalize_related(rows)
+            wp_ids = [int(n["id"]) for n in normalized if n.get("id")]
+            cf_by_wp: dict[int, uuid.UUID] = {}
+            if wp_ids:
+                cf_rows = (
+                    await db.execute(
+                        select(Article.id, Article.wordpress_post_id).where(
+                            Article.wordpress_post_id.in_(wp_ids)
+                        )
+                    )
+                ).all()
+                cf_by_wp = {
+                    int(wp_id): aid for aid, wp_id in cf_rows if wp_id is not None
+                }
+
+            for row in normalized:
+                wp_id = row.get("id")
+                if wp_id is not None:
+                    wp_id = int(wp_id)
+                    if wp_id in seen_wp_ids:
+                        continue
+                link = (row.get("link") or "").strip()
+                if link and link in seen_links:
+                    continue
+                if wp_id is not None:
+                    seen_wp_ids.add(wp_id)
+                if link:
+                    seen_links.add(link)
+                out.append(
+                    RelatedPostItem(
+                        id=wp_id,
+                        article_id=cf_by_wp.get(wp_id) if wp_id is not None else None,
+                        title=row.get("title") or "",
+                        link=link,
+                        date=row.get("date") or "",
+                        thumbnail=row.get("thumbnail"),
+                        score=row.get("score"),
+                    )
+                )
+                if len(out) >= limit:
+                    return out
+        except WordPressError:
+            pass
+
+    if len(out) < limit:
+        for item in await _cf_published_candidates(
+            db, current_user, article_id, needle, limit - len(out)
+        ):
+            if item.id and item.id in seen_wp_ids:
+                continue
+            if item.link and item.link in seen_links:
+                continue
+            if item.id:
+                seen_wp_ids.add(item.id)
+            if item.link:
+                seen_links.add(item.link)
+            out.append(item)
+            if len(out) >= limit:
+                break
+
     return out
 
 
