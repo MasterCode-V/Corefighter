@@ -113,12 +113,21 @@ export default function DoneStep({
             <button type="button" className="cf-btn cf-btn--outline" onClick={onGoList}>
               記事一覧へ
             </button>
-            <button type="button" className="cf-btn cf-btn--ghost" onClick={onGoOps}>
-              運用画面へ
-            </button>
             <button type="button" className="cf-btn cf-btn--ghost" onClick={onNewArticle}>
               続けて新規作成
             </button>
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <p className="cf-section__note" style={{ margin: 0 }}>
+              <button
+                type="button"
+                className="cf-btn cf-btn--ghost cf-btn--sm"
+                onClick={onGoOps}
+                style={{ paddingLeft: 12, paddingRight: 12 }}
+              >
+                運用画面へ
+              </button>
+            </p>
           </div>
         </Section>
       </div>
