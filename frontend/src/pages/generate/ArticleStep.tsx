@@ -396,22 +396,38 @@ export default function ArticleStep({
               まだ選ばれていません。下の検索から追加するか、公開後に自動候補を利用できます。
             </p>
           ) : (
-            <div className="cf-related" style={{ marginBottom: 14 }}>
-              {related.slice(0, MAX_RELATED).map((post, i) => (
-                <div key={relatedKey(post) || i} className="cf-related__card cf-related__card--edit">
-                  {post.thumbnail && <img src={post.thumbnail} alt="" />}
-                  <span className="cf-related__title">{plainText(post.title)}</span>
-                  <button
-                    type="button"
-                    className="cf-iconbtn"
-                    aria-label="関連記事から外す"
-                    onClick={() => removeRelated(post)}
-                    disabled={busy}
-                  >
-                    <TrashIcon />
-                  </button>
-                </div>
-              ))}
+            <div className="cf-related cf-related--gallery" style={{ marginBottom: 14 }}>
+              <div className="cf-related__heading">
+                年間買取10000件 パワトレ 買取実績
+              </div>
+              <div className="cf-related__grid">
+                {related.slice(0, MAX_RELATED).map((post, i) => (
+                  <div key={relatedKey(post) || i} className="cf-related__tile">
+                    {post.thumbnail ? (
+                      <img src={post.thumbnail} alt="" />
+                    ) : (
+                      <div className="cf-related__tile-ph" />
+                    )}
+                    <div className="cf-related__overlay">
+                      {post.date && (
+                        <span className="cf-related__date">
+                          {String(post.date).slice(0, 10).replace(/-/g, '.')}
+                        </span>
+                      )}
+                      <span className="cf-related__title">{plainText(post.title)}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="cf-iconbtn"
+                      aria-label="関連記事から外す"
+                      onClick={() => removeRelated(post)}
+                      disabled={busy}
+                    >
+                      <TrashIcon />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

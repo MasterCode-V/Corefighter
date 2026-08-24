@@ -271,7 +271,13 @@ class WordPressClient:
             if media and isinstance(media, list):
                 m0 = media[0] or {}
                 details = (m0.get("media_details") or {}).get("sizes") or {}
-                thumb = details.get("medium") or details.get("thumbnail") or {}
+                thumb = (
+                    details.get("medium_large")
+                    or details.get("large")
+                    or details.get("medium")
+                    or details.get("thumbnail")
+                    or {}
+                )
                 thumbnail = thumb.get("source_url") or m0.get("source_url")
             result.append(
                 {

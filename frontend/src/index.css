@@ -1611,6 +1611,81 @@ a {
   gap: 10px;
 }
 
+.cf-related--gallery {
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.cf-related__heading {
+  background: #111;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 10px 12px;
+  letter-spacing: 0.02em;
+}
+
+.cf-related__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px;
+  background: #f4f4f4;
+}
+
+.cf-related__tile {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #222;
+}
+
+.cf-related__tile img,
+.cf-related__tile-ph {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.cf-related__tile-ph {
+  background: linear-gradient(135deg, #444, #222);
+}
+
+.cf-related__overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 86%;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  box-sizing: border-box;
+}
+
+.cf-related__date {
+  display: block;
+  margin-bottom: 2px;
+  opacity: 0.95;
+}
+
+.cf-related__tile .cf-iconbtn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(255, 255, 255, 0.92);
+  z-index: 2;
+}
+
 .cf-related__card {
   display: flex;
   align-items: center;

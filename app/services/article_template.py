@@ -19,6 +19,7 @@ Markup mirrors clean manual EXPERIENCE posts (e.g. post #16118 / #16705 header).
 """
 from __future__ import annotations
 
+import html as html_lib
 import re
 from typing import Iterable, Optional
 
@@ -270,27 +271,126 @@ def assemble_html(
     return "\n".join(p for p in parts if p)
 
 
+def _format_related_date(raw: str) -> str:
+    """Normalize ISO / WP dates to buyersbox style ``YYYY.MM.DD``."""
+    text = (raw or "").strip()
+    if not text:
+        return ""
+    m = re.match(r"(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})", text)
+    if not m:
+        return ""
+    return f"{m.group(1)}.{int(m.group(2)):02d}.{int(m.group(3)):02d}"
+
+
+def _related_title_html(title: str) -> str:
+    """Keep intentional ``<br>`` breaks; escape the rest for safe overlay text."""
+    raw = (title or "").strip()
+    if not raw:
+        return ""
+    # Normalize common break variants from WP titles.
+    raw = re.sub(r"<br\s*/?>", "\n", raw, flags=re.I)
+    raw = re.sub(r"<[^>]+>", "", raw)
+    raw = html_lib.unescape(raw).replace("&nbsp;", " ").strip()
+    parts = [p.strip() for p in re.split(r"[\n]+", raw) if p.strip()]
+    if not parts:
+        return ""
+    return "<br>".join(html_lib.escape(p) for p in parts)
+
+
 def build_related_html(related_posts: Optional[Iterable[dict]]) -> str:
-    """HTML block for manually selected related articles (max 4)."""
+    """HTML block for manually selected related articles (max 4).
+
+    Markup mirrors the buyersbox YARPP thumbnail gallery
+    (``年間買取10000件 パワトレ買取実績``) so the live theme CSS renders a
+    2×2 image grid with centered dark title overlays.
+    """
     items = [r for r in (related_posts or []) if (r.get("title") or "").strip()][:4]
     if not items:
         return ""
+
     cards: list[str] = []
     for row in items:
-        title = (row.get("title") or "").strip()
-        link = (row.get("link") or "").strip()
-        thumb = (row.get("thumbnail") or "").strip()
-        img = f'<img src="{thumb}" alt="" />' if thumb else ""
-        inner = f'{img}<span>{title}</span>'
-        if link:
-            cards.append(f'<a class="cf-related-card" href="{link}">{inner}</a>')
-        else:
-            cards.append(f'<div class="cf-related-card">{inner}</div>')
+        title_html = _related_title_html(row.get("title") or "")
+        link = html_lib.escape((row.get("link") or "").strip(), quote=True)
+        thumb = html_lib.escape((row.get("thumbnail") or "").strip(), quote=True)
+        date = _format_related_date(row.get("date") or "")
+        date_html = (
+            f'<span class="cf-related-date">{html_lib.escape(date)}</span>'
+            if date
+            else ""
+        )
+        img = (
+            f'<img class="container_01_image" width="480" height="480" '
+            f'src="{thumb}" alt="" data-pin-nopin="true" />'
+            if thumb
+            else '<span class="container_01_image cf-related-placeholder"></span>'
+        )
+        overlay = (
+            f'<div class="in_img-text yarpp-thumbnail-title">'
+            f"{date_html}"
+            f'<span class="cf-related-title-text">{title_html}</span>'
+            f"</div>"
+        )
+        attrs = (
+            f'class="container_01 yarpp-thumbnail" rel="norewrite" href="{link}"'
+            if link
+            else 'class="container_01 yarpp-thumbnail" rel="norewrite"'
+        )
+        tag = "a" if link else "div"
+        cards.append(f"<{tag} {attrs}>{img}{overlay}</{tag}>")
+
+    # Hide theme-auto YARPP when this manual block is present, and force a
+    # reliable 2-column layout even if theme CSS is unavailable in content.
+    style = (
+        "<style>"
+        ".yarpp:not(.cf-manual-related){display:none!important;}"
+        ".cf-manual-related.yarpp{display:block!important;margin:24px 0;}"
+        ".cf-manual-related>h3{"
+        "background:#111;color:#fff;font-size:16px;font-weight:700;"
+        "line-height:1.4;margin:0 0 12px;padding:10px 14px;position:relative;"
+        "}"
+        ".cf-manual-related>h3::after{"
+        "content:'//';position:absolute;right:14px;top:50%;"
+        "transform:translateY(-50%);letter-spacing:2px;opacity:.85;"
+        "}"
+        ".cf-manual-related .yarpp-thumbnails-horizontal{"
+        "display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));"
+        "gap:10px;width:100%;margin:0;"
+        "}"
+        ".cf-manual-related .yarpp-thumbnail{"
+        "position:relative;display:block;overflow:hidden;border-radius:4px;"
+        "aspect-ratio:1/1;background:#222;text-decoration:none;"
+        "}"
+        ".cf-manual-related .container_01_image,"
+        ".cf-manual-related .cf-related-placeholder{"
+        "display:block;width:100%!important;height:100%!important;"
+        "object-fit:cover;border-radius:0!important;margin:0!important;"
+        "}"
+        ".cf-manual-related .cf-related-placeholder{background:#444;min-height:180px;}"
+        ".cf-manual-related .in_img-text{"
+        "position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);"
+        "width:85%!important;margin:0;padding:6px 10px;color:#fff;"
+        "background:rgba(0,0,0,.8);font-size:13px!important;font-weight:700;"
+        "line-height:1.45;text-align:center;box-sizing:border-box;"
+        "}"
+        ".cf-manual-related .cf-related-date{display:block;margin-bottom:2px;}"
+        "@media (max-width:560px){"
+        ".cf-manual-related .yarpp-thumbnails-horizontal{"
+        "grid-template-columns:1fr!important;"
+        "}"
+        "}"
+        "</style>"
+    )
+
     return (
         "<!--cf-related-start-->"
-        '<div class="cf-related-posts">'
-        "<h3>関連する買取実績</h3>"
-        f'<div class="cf-related-posts__grid">{"".join(cards)}</div>'
+        f"{style}"
+        '<div class="custom-relate yarpp yarpp-related yarpp-related-website '
+        'yarpp-template-thumbnails cf-manual-related">'
+        "<h3>年間買取10000件　<br class=\"sp\">パワトレ買取実績</h3>"
+        '<div class="yarpp-thumbnails-horizontal">'
+        f"{''.join(cards)}"
+        "</div>"
         "</div>"
         "<!--cf-related-end-->"
     )
