@@ -300,9 +300,11 @@ def _related_title_html(title: str) -> str:
 def build_related_html(related_posts: Optional[Iterable[dict]]) -> str:
     """HTML block for manually selected related articles (max 4).
 
-    Markup mirrors the buyersbox YARPP thumbnail gallery
-    (``年間買取10000件 パワトレ買取実績``) so the live theme CSS renders a
-    2×2 image grid with centered dark title overlays.
+    WordPress runs ``wpautop`` on post content and breaks nested
+    ``<div>`` inside ``<a>`` (that caused the tall gray collapsed layout).
+    Cards therefore use only inline ``<span>`` children and CSS
+    ``background-image``, wrapped in a Gutenberg HTML block so the markup
+    stays intact on publish.
     """
     items = [r for r in (related_posts or []) if (r.get("title") or "").strip()][:4]
     if not items:
@@ -315,83 +317,56 @@ def build_related_html(related_posts: Optional[Iterable[dict]]) -> str:
         thumb = html_lib.escape((row.get("thumbnail") or "").strip(), quote=True)
         date = _format_related_date(row.get("date") or "")
         date_html = (
-            f'<span class="cf-related-date">{html_lib.escape(date)}</span>'
+            f'<span class="cf-rel__date">{html_lib.escape(date)}</span>'
             if date
             else ""
         )
-        img = (
-            f'<img class="container_01_image" width="480" height="480" '
-            f'src="{thumb}" alt="" data-pin-nopin="true" />'
-            if thumb
-            else '<span class="container_01_image cf-related-placeholder"></span>'
-        )
-        overlay = (
-            f'<div class="in_img-text yarpp-thumbnail-title">'
+        bg = f' style="background-image:url({thumb})"' if thumb else ""
+        inner = (
+            f'<span class="cf-rel__overlay">'
             f"{date_html}"
-            f'<span class="cf-related-title-text">{title_html}</span>'
-            f"</div>"
+            f'<span class="cf-rel__title">{title_html}</span>'
+            f"</span>"
         )
-        attrs = (
-            f'class="container_01 yarpp-thumbnail" rel="norewrite" href="{link}"'
-            if link
-            else 'class="container_01 yarpp-thumbnail" rel="norewrite"'
-        )
-        tag = "a" if link else "div"
-        cards.append(f"<{tag} {attrs}>{img}{overlay}</{tag}>")
+        if link:
+            cards.append(f'<a class="cf-rel__card" href="{link}"{bg}>{inner}</a>')
+        else:
+            cards.append(f'<span class="cf-rel__card"{bg}>{inner}</span>')
 
-    # Hide theme-auto YARPP when this manual block is present, and force a
-    # reliable 2-column layout even if theme CSS is unavailable in content.
+    # Keep CSS compact (one line) so wpautop does not insert <p> mid-rule.
     style = (
-        "<style>"
-        ".yarpp:not(.cf-manual-related){display:none!important;}"
-        ".cf-manual-related.yarpp{display:block!important;margin:24px 0;}"
-        ".cf-manual-related>h3{"
-        "background:#111;color:#fff;font-size:16px;font-weight:700;"
-        "line-height:1.4;margin:0 0 12px;padding:10px 14px;position:relative;"
-        "}"
-        ".cf-manual-related>h3::after{"
-        "content:'//';position:absolute;right:14px;top:50%;"
-        "transform:translateY(-50%);letter-spacing:2px;opacity:.85;"
-        "}"
-        ".cf-manual-related .yarpp-thumbnails-horizontal{"
-        "display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));"
-        "gap:10px;width:100%;margin:0;"
-        "}"
-        ".cf-manual-related .yarpp-thumbnail{"
-        "position:relative;display:block;overflow:hidden;border-radius:4px;"
-        "aspect-ratio:1/1;background:#222;text-decoration:none;"
-        "}"
-        ".cf-manual-related .container_01_image,"
-        ".cf-manual-related .cf-related-placeholder{"
-        "display:block;width:100%!important;height:100%!important;"
-        "object-fit:cover;border-radius:0!important;margin:0!important;"
-        "}"
-        ".cf-manual-related .cf-related-placeholder{background:#444;min-height:180px;}"
-        ".cf-manual-related .in_img-text{"
-        "position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);"
-        "width:85%!important;margin:0;padding:6px 10px;color:#fff;"
-        "background:rgba(0,0,0,.8);font-size:13px!important;font-weight:700;"
-        "line-height:1.45;text-align:center;box-sizing:border-box;"
-        "}"
-        ".cf-manual-related .cf-related-date{display:block;margin-bottom:2px;}"
-        "@media (max-width:560px){"
-        ".cf-manual-related .yarpp-thumbnails-horizontal{"
-        "grid-template-columns:1fr!important;"
-        "}"
-        "}"
+        "<style type=\"text/css\">"
+        ".yarpp{display:none!important;}"
+        ".cf-rel{display:block!important;margin:24px 0;clear:both;}"
+        ".cf-rel__head{background:#111;color:#fff;font-size:16px;font-weight:700;"
+        "line-height:1.4;margin:0 0 12px;padding:10px 14px;position:relative;}"
+        ".cf-rel__head::after{content:'//';position:absolute;right:14px;top:50%;"
+        "transform:translateY(-50%);letter-spacing:2px;opacity:.85;}"
+        ".cf-rel__grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));"
+        "gap:10px;width:100%;margin:0;}"
+        ".cf-rel__card{position:relative;display:block;overflow:hidden;border-radius:4px;"
+        "aspect-ratio:1/1;background:#222 center/cover no-repeat;text-decoration:none;"
+        "min-height:180px;box-sizing:border-box;}"
+        ".cf-rel__overlay{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);"
+        "width:85%;margin:0;padding:6px 10px;color:#fff;background:rgba(0,0,0,.8);"
+        "font-size:13px;font-weight:700;line-height:1.45;text-align:center;"
+        "box-sizing:border-box;}"
+        ".cf-rel__date{display:block;margin-bottom:2px;}"
+        ".cf-rel__title{display:block;}"
+        "@media (max-width:560px){.cf-rel__grid{grid-template-columns:1fr!important;}}"
         "</style>"
     )
 
+    # Gutenberg raw HTML block prevents wpautop from rewriting the structure.
     return (
         "<!--cf-related-start-->"
+        "<!-- wp:html -->"
         f"{style}"
-        '<div class="custom-relate yarpp yarpp-related yarpp-related-website '
-        'yarpp-template-thumbnails cf-manual-related">'
-        "<h3>年間買取10000件　<br class=\"sp\">パワトレ買取実績</h3>"
-        '<div class="yarpp-thumbnails-horizontal">'
-        f"{''.join(cards)}"
+        '<div class="cf-rel">'
+        '<div class="cf-rel__head">年間買取10000件　パワトレ買取実績</div>'
+        f'<div class="cf-rel__grid">{"".join(cards)}</div>'
         "</div>"
-        "</div>"
+        "<!-- /wp:html -->"
         "<!--cf-related-end-->"
     )
 
@@ -399,10 +374,19 @@ def build_related_html(related_posts: Optional[Iterable[dict]]) -> str:
 def inject_related_into_html(html: str, related_posts: Optional[Iterable[dict]]) -> str:
     """Replace or insert the related block before the dial/LINE footer."""
     block = build_related_html(related_posts)
+    cleaned = html or ""
+    # Remove previous CF related blocks (including wpautop-broken wrappers).
     cleaned = re.sub(
-        r"<!--cf-related-start-->[\s\S]*?<!--cf-related-end-->\s*",
+        r"(?:<p>\s*)?<!--cf-related-start-->[\s\S]*?<!--cf-related-end-->(?:\s*</p>)?\s*",
         "",
-        html or "",
+        cleaned,
+        count=1,
+    )
+    # Also strip older class-based related markup if markers were lost.
+    cleaned = re.sub(
+        r'<div class="custom-relate yarpp[^"]*cf-manual-related[^"]*"[\s\S]*?</div>\s*</div>\s*',
+        "",
+        cleaned,
         count=1,
     )
     if not block:

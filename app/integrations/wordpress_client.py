@@ -118,6 +118,12 @@ class WordPressClient:
         except WordPressError:
             return None
 
+    async def get_media(self, media_id: int) -> Optional[dict]:
+        try:
+            return await self._request("GET", f"/media/{media_id}")
+        except WordPressError:
+            return None
+
     async def create_post(self, payload: dict) -> dict:
         return await self._request("POST", "/posts", json=payload)
 

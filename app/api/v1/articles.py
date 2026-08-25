@@ -556,11 +556,55 @@ async def update_related_posts(
     article = await _get_article(db, article_id)
     ensure_store_access(current_user, article.store_id)
 
+    # Backfill missing thumbnails from WordPress featured media when possible.
+    thumb_by_id: dict[int, str] = {}
+    missing_ids = [
+        int(row.id)
+        for row in (body.items or [])
+        if row.id and not (row.thumbnail or "").strip()
+    ]
+    if missing_ids:
+        site = await _resolve_wp_site(db, article)
+        if site:
+            client = WordPressClient(
+                site.base_url, site.username, decrypt_secret(site.encrypted_app_password)
+            )
+            for wp_id in missing_ids:
+                try:
+                    post = await client.get_post(wp_id)
+                except WordPressError:
+                    post = None
+                if not post:
+                    continue
+                media_id = post.get("featured_media")
+                if not media_id:
+                    continue
+                try:
+                    media = await client.get_media(int(media_id))
+                except Exception:  # noqa: BLE001
+                    media = None
+                if not media:
+                    continue
+                details = (media.get("media_details") or {}).get("sizes") or {}
+                thumb = (
+                    details.get("medium_large")
+                    or details.get("large")
+                    or details.get("medium")
+                    or details.get("thumbnail")
+                    or {}
+                )
+                url = thumb.get("source_url") or media.get("source_url")
+                if url:
+                    thumb_by_id[wp_id] = url
+
     items = []
     for row in (body.items or [])[:4]:
         title = (row.title or "").strip()
         if not title:
             continue
+        thumb = (row.thumbnail or "").strip() or None
+        if not thumb and row.id and int(row.id) in thumb_by_id:
+            thumb = thumb_by_id[int(row.id)]
         items.append(
             {
                 "id": row.id,
@@ -568,7 +612,7 @@ async def update_related_posts(
                 "title": title,
                 "link": (row.link or "").strip(),
                 "date": row.date or "",
-                "thumbnail": row.thumbnail,
+                "thumbnail": thumb,
                 "score": row.score,
             }
         )
