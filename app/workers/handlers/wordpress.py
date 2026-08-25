@@ -205,6 +205,8 @@ async def _build_payload(db, article: Article, version: ArticleVersion, client: 
     purchase = result.scalar_one_or_none()
     store = await db.get(Store, article.store_id) if article.store_id else None
     cfg = article_template.resolve_config(store)
+    # Older drafts only had dial; append VVF/SNS/store tail to match #16708.
+    content = article_template.ensure_experience_tail(content, cfg)
     purchase_category = getattr(purchase, "category", None) if purchase else None
 
     excerpt = article_template.build_excerpt(

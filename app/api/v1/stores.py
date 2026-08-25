@@ -29,7 +29,7 @@ TEMPLATE_KEYS = {
     "label", "area", "title_prefix", "title_suffix",
     "heading_prefix", "heading_suffix", "thanks_text", "thanks_color",
     "persona_intro", "many_threshold", "phone_general", "phone_dispatch",
-    "line_url", "footer_html", "style",
+    "line_url", "footer_html", "after_footer_html", "style",
 }
 
 

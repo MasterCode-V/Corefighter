@@ -1,12 +1,14 @@
 """Buyback article template (buyersbox.co.jp style).
 
-An article is composed of three parts:
+An article is composed of:
 
     1. Fixed header   -> centered H2 + centered red thanks + optional product line
                          + centered main image (WordPress aligncenter)
     2. Variable body  -> the AI-written casual blog about the specific item
-    3. Fixed footer   -> phone / LINE / VVF / store-info boilerplate (identical
-                         on every article; NOT used for similarity)
+    3. Dial footer    -> phone / LINE block
+    4. Related block  -> optional CF gallery (manual posts use YARPP here)
+    5. After footer   -> VVF / ペアコイル images, SNS QR, 3-store maps
+                         (same layout as live post #16708)
 
 The variable body is stored on ``ArticleVersion.body`` (so similarity only
 compares the unique part). The fully assembled HTML is stored on
@@ -15,7 +17,7 @@ compares the unique part). The fully assembled HTML is stored on
 Global defaults live here; each store may override any key via
 ``Store.article_config`` (a JSONB column).
 
-Markup mirrors clean manual EXPERIENCE posts (e.g. post #16118 / #16705 header).
+Markup mirrors manual EXPERIENCE posts (reference: post #16708).
 """
 from __future__ import annotations
 
@@ -28,6 +30,28 @@ from app.models import Purchase, Store
 # Ward/city/prefecture tags (e.g. 札幌市東区) must not be sent to WordPress.
 _LOCATION_TAG_RE = re.compile(
     r"(北海道|札幌|横浜|東京|大阪|名古屋|福岡|仙台|市|区|町|村|県|都|郡)"
+)
+
+# Live media used on every EXPERIENCE post (from buyersbox.co.jp post #16708).
+_VVF_PRICE_IMG = (
+    "https://www.buyersbox.co.jp/wp/wp-content/uploads/2026/06/"
+    "0391f739ac5e4e662cf9c9355008b588.jpg"
+)
+_PAIR_COIL_IMG = (
+    "https://www.buyersbox.co.jp/wp/wp-content/uploads/2026/06/"
+    "851581fd0325e7f22df4ea70b523613f.jpg"
+)
+_LINE_QR_IMG = "https://www.buyersbox.co.jp/wp/wp-content/uploads/2024/06/line.png"
+_IG_QR_IMG = (
+    "https://www.buyersbox.co.jp/wp/wp-content/uploads/2024/02/powetre.cen_qr-557x640.png"
+)
+_STORE_IMG_NAEBO = "https://www.buyersbox.co.jp/wp/wp-content/uploads/2023/10/02-640x427.jpg"
+_STORE_IMG_TOYOHIRA = (
+    "https://www.buyersbox.co.jp/wp/wp-content/themes/original/images/takahiro-box/BB.jpg"
+)
+_STORE_IMG_YONESATO = (
+    "https://www.buyersbox.co.jp/wp/wp-content/themes/original/images/"
+    "takahiro-box/%E6%9D%B1%E7%B1%B3%E9%87%8C%E5%BA%97.png"
 )
 
 # ---------------------------------------------------------------------------
@@ -45,12 +69,9 @@ DEFAULT_TEMPLATE: dict = {
     "persona_intro": "こんにちは～🙋‍♀️パワトレギャルです💕",
     "many_threshold": 10,              # qty >= this => omit model number in title
     "phone_general": "011-827-1149",
-    "phone_dispatch": "050-1809-4396",
+    "phone_dispatch": "050-3479-0800",
     "line_url": "https://lin.ee/WnXr1bu",
-    # Footer = the dial / LINE block only, byte-for-byte like manual EXPERIENCE
-    # posts. The 買取価格 tables, SNS block, store info and maps below an article
-    # are rendered by the theme for /experience/ posts — putting them in the
-    # content produces empty duplicate headings.
+    # Dial / LINE only. Related gallery is inserted after this, then after_footer.
     "footer_html": (
         '<p style="text-align: left;">'
         '<span style="color: #008000;"><strong>出張買取専用ダイヤル</strong></span>'
@@ -60,7 +81,85 @@ DEFAULT_TEMPLATE: dict = {
         'LINE査定もご利用ください。<br />\n'
         'LINE査定は<a href="{line_url}">こちら</a>から</p>'
     ),
+    # Filled by build_after_footer_html() below (VVF / SNS / stores).
+    "after_footer_html": "",
 }
+
+
+def build_after_footer_html(*, phone_general: str = "011-827-1149") -> str:
+    """Shared EXPERIENCE tail after related articles (post #16708 layout)."""
+    tel = html_lib.escape(phone_general)
+    return f"""<!--cf-after-footer-start-->
+<hr class="mt60" />
+<h5 style="text-align: center;">【札幌市内No.1】<br>最新のVVF電線買取価格</h5>
+<div class="mt40">
+<figure class="wp-block-image size-large"><img decoding="async" src="{_VVF_PRICE_IMG}" alt="VVF電線買取価格" class="wp-image-16441" /></figure>
+</div>
+<hr class="mt60" />
+<h5 style="text-align: center;">【札幌市内No.1】<br>最新のペアコイル買取価格</h5>
+<div class="mt40">
+<figure class="wp-block-image size-large"><img loading="lazy" decoding="async" src="{_PAIR_COIL_IMG}" alt="ペアコイル買取価格" class="wp-image-16357" /></figure>
+</div>
+<hr class="mt60" />
+<h5 style="text-align: center;">SNS情報発信&amp;査定依頼受付中</h5>
+<p class="mt20" style="text-align: center;">
+無料査定はLINE、インスタのDM、電話から受け付けております😎<br />
+お電話よりLINE、インスタグラムDMでの査定の方がより正確な査定額をご連絡できますのでおすすめです♪<br />
+査定額でご納得いただけましたらそのままご来店日時のご連絡も受け付けております！買取商品が多い場合は出張買取も対応しております🚗💨
+</p>
+<p style="text-align: center;"><a class="sns__tel mt20" href="tel:{tel}">☎︎：{tel}</a></p>
+<div>
+<ul class="sns__icon-wrap mt20">
+<li><a href="https://page.line.me/613fwlhk?openQrModal=true"><img src="{_LINE_QR_IMG}" alt="LINE" width="400" height="300" /></a></li>
+<li><a href="https://www.instagram.com/powetre.cen/"><img src="{_IG_QR_IMG}" alt="Instagram" width="400" height="300" /></a></li>
+</ul>
+</div>
+<hr class="mt60" />
+<div class="map__wrap mt40">
+<!-- 東苗穂 -->
+<h4>● パワフルトレードセンター 東苗穂店</h4>
+<div class="map-container mt20">
+<img src="{_STORE_IMG_NAEBO}" alt="東苗穂店" width="400" height="300" class="alignnone size-medium wp-image-5561 shop-img" style="object-fit: cover; margin-right: 10px;" />
+<iframe src="https://www.google.com/maps/embed?pb=!4v1696668903845!6m8!1m7!1sCAoSLEFGMVFpcE85eWtacWIxcFg2ZE5EbnpReS0zbWlBdkx3a2VNd20zam4zVVBQ!2m2!1d43.08611046008158!2d141.4029573217392!3f303.31!4f-2.319999999999993!5f0.4000000000000002" width="100%" height="450" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade" class="store-view"></iframe>
+</div>
+<p style="text-align: center;">
+<br /><span>〒007-0803</span><br />
+<span>北海道札幌市東区東苗穂3条1丁目3-45 コスモロイヤル東苗穂A棟 1F</span><br />
+<span>定休日：日曜・祝日</span><br />
+<a href="/takahiro-box#store-info-1"><span style="text-decoration: underline; color: #000!important;">詳しい店舗情報はこちら</span></a><br />
+<br /><iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d1456.938389287661!2d141.40160165660876!3d43.086085851647766!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x5f0b2fe72b79b61f%3A0xad919e4358c75373!2z44OR44Ov44OV44Or44OI44Os44O844OJ44K744Oz44K_44O85p2x6IuX56mC5bqXKOODkeODr-ODleODq-iyt-WPluOCu-ODs-OCv-ODvCk!5e0!3m2!1sja!2sjp!4v1697186127724!5m2!1sja!2sjp" width="100%" height="450" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade" class="map"></iframe>
+</p>
+<!-- 豊平 -->
+<h4>● パワフルトレードセンター 豊平店</h4>
+<div class="map-container mt20">
+<img src="{_STORE_IMG_TOYOHIRA}" alt="豊平店" width="400" height="300" class="size-medium wp-image-5541 shop-img" style="object-fit: cover; margin-right: 10px;" />
+<iframe src="https://www.google.com/maps/embed?pb=!4v1696668925555!6m8!1m7!1sCAoSLEFGMVFpcE1FUENfa29WUTRybkp4d0pSTFVBRGNpa3hxbG5xOEx4aHkzdEpj!2m2!1d43.04808588136832!2d141.3776521227879!3f303.0121462985205!4f-7.844453741452611!5f0.4000000000000002" width="100%" height="450" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade" class="store-view"></iframe>
+</div>
+<p style="text-align: center;">
+<br /><span>〒062-0903</span><br />
+<span>北海道札幌市豊平区豊平3条9丁目3-10　エムズ豊平１F</span><br />
+<span>定休日：日曜・祝日</span><br />
+<a href="/takahiro-box#store-info-2"><span style="text-decoration: underline; color: #000!important;">詳しい店舗情報はこちら</span></a><br />
+<br /><iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d23325.469362714506!2d141.33954584598547!3d43.04808672084896!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x5f0b2a32aa16aaab%3A0x2d2ebd87762f8f17!2z44OR44Ov44OV44Or44OI44Os44O844OJ44K744Oz44K_44O86LGK5bmz5bqXKOODkeODr-ODleODq-iyt-WPluOCu-ODs-OCv-ODvCk!5e0!3m2!1sja!2sjp!4v1697186042166!5m2!1sja!2sjp" width="100%" height="450" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade" class="map"></iframe>
+</p>
+<!-- 東米里 -->
+<h4>● パワフルトレードセンター 東米里店</h4>
+<div class="map-container mt20">
+<img src="{_STORE_IMG_YONESATO}" alt="東米里店" width="400" height="300" class="alignnone size-medium shop-img" style="object-fit: cover; margin-right: 10px;" />
+<iframe src="https://www.google.com/maps/embed?pb=!4v1697703959827!6m8!1m7!1sCAoSLEFGMVFpcE5uMGVxaWx1UjlLWVZfZEs3UFBJUjVVTmhoX1ZMMldFckxvc2lz!2m2!1d43.08430388564238!2d141.4518002916817!3f180.18!4f-0.1700000000000017!5f0.7820865974627469" width="100%" height="450" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade" class="store-view"></iframe>
+</div>
+<p style="text-align: center;">
+<br /><span>〒003-0876</span><br />
+<span>北海道札幌市白石区東米里2090-170</span><br />
+<span>定休日：日曜・祝日</span><br />
+<a href="/takahiro-box#store-info-3"><span style="text-decoration: underline; color: #000!important;">詳しい店舗情報はこちら</span></a><br />
+<br /><iframe src="https://www.google.com/maps/embed?pb=!1m14!1m8!1m3!1d11655.846165037865!2d141.4518002916817!3d43.08430388564238!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x5f0b2d96c3ff41b3%3A0xb325a5d4310655d1!2z44OR44Ov44OV44Or44OI44Os44O844OJ44K744Oz44K_44O85p2x57Gz6YeM5bqX77yI44OR44Ov44OV44Or6LK35Y-W44K744Oz44K_44O877yJ!5e0!3m2!1sja!2sjp!4v1697674709910!5m2!1sja!2sjp" width="100%" height="450" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade" class="map"></iframe>
+</p>
+</div>
+<!--cf-after-footer-end-->"""
+
+
+DEFAULT_TEMPLATE["after_footer_html"] = build_after_footer_html()
 
 
 def resolve_config(store: Optional[Store]) -> dict:
@@ -71,6 +170,11 @@ def resolve_config(store: Optional[Store]) -> dict:
             cfg.update({k: v for k, v in store.article_config.items() if v not in (None, "")})
         if not cfg.get("label"):
             cfg["label"] = store.name or ""
+    after = (cfg.get("after_footer_html") or "").strip()
+    if not after or "{phone_general}" in after:
+        cfg["after_footer_html"] = build_after_footer_html(
+            phone_general=cfg.get("phone_general") or "011-827-1149",
+        )
     return cfg
 
 
@@ -235,6 +339,26 @@ def _image_html(main_image_url: Optional[str], alt: str = "") -> str:
     )
 
 
+def _format_dial(cfg: dict) -> str:
+    return cfg["footer_html"].format(
+        phone_general=cfg.get("phone_general", ""),
+        phone_dispatch=cfg.get("phone_dispatch", ""),
+        line_url=cfg.get("line_url", "https://lin.ee/WnXr1bu"),
+    )
+
+
+def _format_after_footer(cfg: dict) -> str:
+    after = (cfg.get("after_footer_html") or "").strip()
+    if not after:
+        after = build_after_footer_html(
+            phone_general=cfg.get("phone_general") or "011-827-1149",
+        )
+    try:
+        return after.format(phone_general=cfg.get("phone_general", "011-827-1149"))
+    except (KeyError, ValueError, IndexError):
+        return after
+
+
 def assemble_html(
     cfg: dict,
     heading: str,
@@ -246,27 +370,29 @@ def assemble_html(
 ) -> str:
     """Wrap the AI body with the fixed header + footer to produce the final HTML.
 
-    Structure mirrors manual EXPERIENCE posts: centered H2, centered red thanks,
-    centered main image, body, optional related block, dial/LINE footer.
+    Order matches manual EXPERIENCE post #16708:
+    H2 → thanks → product → image → body → dial → related → VVF/SNS/stores.
     """
     color = cfg.get("thanks_color") or "#ff0000"
     thanks = (
         f'<p style="text-align: center;">'
         f'<strong><span style="color: {color};">{cfg["thanks_text"]}</span></strong></p>'
     )
-    footer = cfg["footer_html"].format(
-        phone_general=cfg.get("phone_general", ""),
-        phone_dispatch=cfg.get("phone_dispatch", ""),
-        line_url=cfg.get("line_url", "https://lin.ee/WnXr1bu"),
-    )
+    product_html = ""
+    if product_line:
+        product_html = (
+            f'<p style="text-align: center;"><strong>{html_lib.escape(product_line)}</strong></p>'
+        )
     alt = f"{product_line}買取" if product_line else ""
     parts = [
         f'<h2 style="text-align: center;">{heading}</h2>',
         thanks,
+        product_html,
         _image_html(main_image_url, alt),
         (ai_body_html or "").strip(),
+        _format_dial(cfg),
         build_related_html(related_posts),
-        footer,
+        _format_after_footer(cfg),
     ]
     return "\n".join(p for p in parts if p)
 
@@ -395,31 +521,103 @@ def build_related_html(related_posts: Optional[Iterable[dict]]) -> str:
     )
 
 
-def inject_related_into_html(html: str, related_posts: Optional[Iterable[dict]]) -> str:
-    """Replace or insert the related block before the dial/LINE footer."""
-    block = build_related_html(related_posts)
-    cleaned = html or ""
-    # Remove previous CF related blocks (including wpautop-broken wrappers).
+def _strip_related_blocks(html: str) -> str:
     cleaned = re.sub(
         r"(?:<p>\s*)?<!--cf-related-start-->[\s\S]*?<!--cf-related-end-->(?:\s*</p>)?\s*",
         "",
-        cleaned,
+        html or "",
         count=1,
     )
-    # Also strip older class-based related markup if markers were lost.
     cleaned = re.sub(
         r'<div class="custom-relate yarpp[^"]*cf-manual-related[^"]*"[\s\S]*?</div>\s*</div>\s*',
         "",
         cleaned,
         count=1,
     )
+    return cleaned
+
+
+def _strip_after_footer(html: str) -> str:
+    return re.sub(
+        r"(?:<p>\s*)?<!--cf-after-footer-start-->[\s\S]*?<!--cf-after-footer-end-->(?:\s*</p>)?\s*",
+        "",
+        html or "",
+        count=1,
+    )
+
+
+def inject_related_into_html(html: str, related_posts: Optional[Iterable[dict]]) -> str:
+    """Replace or insert the related block between dial and VVF/SNS after-footer."""
+    block = build_related_html(related_posts)
+    cleaned = _strip_related_blocks(html or "")
     if not block:
         return cleaned.strip()
+
+    # Prefer inserting before after-footer / VVF section (post #16708 order).
+    for marker in ("<!--cf-after-footer-start-->", "最新のVVF電線買取価格", "SNS情報発信"):
+        idx = cleaned.find(marker)
+        if idx >= 0:
+            insert_at = cleaned.rfind("<hr", 0, idx)
+            if insert_at < 0 or idx - insert_at > 200:
+                insert_at = idx
+            return cleaned[:insert_at].rstrip() + "\n" + block + "\n" + cleaned[insert_at:]
+
+    # Fallback: after dial paragraph.
     marker = "出張買取専用ダイヤル"
     idx = cleaned.find(marker)
     if idx >= 0:
-        p_start = cleaned.rfind("<p", 0, idx)
-        if p_start >= 0:
-            return cleaned[:p_start].rstrip() + "\n" + block + "\n" + cleaned[p_start:]
+        p_end = cleaned.find("</p>", idx)
+        if p_end >= 0:
+            p_end += len("</p>")
+            return cleaned[:p_end].rstrip() + "\n" + block + "\n" + cleaned[p_end:].lstrip()
     return cleaned.rstrip() + "\n" + block
+
+
+def ensure_experience_tail(html: str, cfg: dict) -> str:
+    """Guarantee dial + VVF/SNS/store tail exist (for older rendered_html on publish)."""
+    text = html or ""
+    after = _format_after_footer(cfg)
+    dial = _format_dial(cfg)
+
+    has_after = "VVF電線買取価格" in text and "SNS情報発信" in text and "map__wrap" in text
+    has_dial = "出張買取専用ダイヤル" in text
+    if has_after and has_dial:
+        return text
+
+    text = _strip_after_footer(text)
+
+    if not has_dial:
+        if "<!--cf-related-start-->" in text:
+            text = text.replace(
+                "<!--cf-related-start-->",
+                dial + "\n<!--cf-related-start-->",
+                1,
+            )
+        else:
+            text = text.rstrip() + "\n" + dial
+
+    if "VVF電線買取価格" not in text or "map__wrap" not in text:
+        if "<!--cf-related-end-->" in text:
+            text = text.replace(
+                "<!--cf-related-end-->",
+                "<!--cf-related-end-->\n" + after,
+                1,
+            )
+        elif "出張買取専用ダイヤル" in text:
+            idx = text.find("出張買取専用ダイヤル")
+            p_end = text.find("</p>", idx)
+            if p_end >= 0:
+                p_end += len("</p>")
+                rel_end = text.find("<!--cf-related-end-->", p_end)
+                if rel_end >= 0:
+                    rel_end += len("<!--cf-related-end-->")
+                    text = text[:rel_end] + "\n" + after + text[rel_end:]
+                else:
+                    text = text[:p_end] + "\n" + after + text[p_end:]
+            else:
+                text = text.rstrip() + "\n" + after
+        else:
+            text = text.rstrip() + "\n" + after
+
+    return text
 
