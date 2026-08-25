@@ -1686,6 +1686,44 @@ a {
   z-index: 2;
 }
 
+@media (max-width: 768px) {
+  .cf-related__heading {
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+
+  .cf-related__grid {
+    gap: 6px;
+    padding: 6px;
+  }
+
+  .cf-related__overlay {
+    width: 90%;
+    padding: 4px 6px;
+    font-size: 10px;
+    line-height: 1.35;
+    max-height: 78%;
+    overflow: hidden;
+  }
+
+  .cf-related__title {
+    -webkit-line-clamp: 4;
+  }
+
+  .cf-related__tile .cf-iconbtn {
+    top: 4px;
+    right: 4px;
+    transform: scale(0.9);
+  }
+}
+
+@media (max-width: 380px) {
+  .cf-related__grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+
 .cf-related__card {
   display: flex;
   align-items: center;

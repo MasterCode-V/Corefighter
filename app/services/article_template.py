@@ -334,26 +334,49 @@ def build_related_html(related_posts: Optional[Iterable[dict]]) -> str:
             cards.append(f'<span class="cf-rel__card"{bg}>{inner}</span>')
 
     # Keep CSS compact (one line) so wpautop does not insert <p> mid-rule.
+    # Desktop stays 2x2; mobile rules only adjust type/spacing (and 1-col under 380px).
     style = (
         "<style type=\"text/css\">"
         ".yarpp{display:none!important;}"
-        ".cf-rel{display:block!important;margin:24px 0;clear:both;}"
+        ".cf-rel{display:block!important;margin:24px 0;clear:both;"
+        "width:100%!important;max-width:100%!important;box-sizing:border-box;}"
         ".cf-rel__head{background:#111;color:#fff;font-size:16px;font-weight:700;"
-        "line-height:1.4;margin:0 0 12px;padding:10px 14px;position:relative;}"
+        "line-height:1.4;margin:0 0 12px;padding:10px 14px;position:relative;"
+        "box-sizing:border-box;}"
         ".cf-rel__head::after{content:'//';position:absolute;right:14px;top:50%;"
         "transform:translateY(-50%);letter-spacing:2px;opacity:.85;}"
         ".cf-rel__grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));"
-        "gap:10px;width:100%;margin:0;}"
+        "gap:10px;width:100%;margin:0;box-sizing:border-box;}"
         ".cf-rel__card{position:relative;display:block;overflow:hidden;border-radius:4px;"
         "aspect-ratio:1/1;background:#222 center/cover no-repeat;text-decoration:none;"
-        "min-height:180px;box-sizing:border-box;}"
+        "min-height:180px;box-sizing:border-box;width:100%;}"
         ".cf-rel__overlay{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);"
-        "width:85%;margin:0;padding:6px 10px;color:#fff;background:rgba(0,0,0,.8);"
-        "font-size:13px;font-weight:700;line-height:1.45;text-align:center;"
-        "box-sizing:border-box;}"
+        "width:85%;max-width:85%;max-height:78%;margin:0;padding:6px 10px;color:#fff;"
+        "background:rgba(0,0,0,.8);font-size:13px;font-weight:700;line-height:1.45;"
+        "text-align:center;box-sizing:border-box;overflow:hidden;}"
         ".cf-rel__date{display:block;margin-bottom:2px;}"
         ".cf-rel__title{display:block;}"
-        "@media (max-width:560px){.cf-rel__grid{grid-template-columns:1fr!important;}}"
+        ".cf-rel__br{display:none;}"
+        "@media (max-width:768px){"
+        ".cf-rel{margin:16px 0;}"
+        ".cf-rel__br{display:inline;}"
+        ".cf-rel__head{font-size:13px;padding:8px 36px 8px 10px;margin:0 0 8px;}"
+        ".cf-rel__head::after{right:10px;font-size:12px;}"
+        ".cf-rel__grid{gap:6px!important;}"
+        ".cf-rel__card{min-height:0;border-radius:3px;}"
+        ".cf-rel__overlay{width:90%;max-width:90%;padding:4px 6px;font-size:10px;"
+        "line-height:1.35;}"
+        ".cf-rel__date{margin-bottom:1px;font-size:9px;}"
+        ".cf-rel__title{display:-webkit-box;-webkit-box-orient:vertical;"
+        "-webkit-line-clamp:4;overflow:hidden;}"
+        "}"
+        "@media (max-width:380px){"
+        ".cf-rel__grid{grid-template-columns:1fr!important;gap:8px!important;}"
+        ".cf-rel__card{min-height:160px;}"
+        ".cf-rel__overlay{font-size:12px;padding:6px 8px;}"
+        ".cf-rel__date{font-size:11px;}"
+        ".cf-rel__title{-webkit-line-clamp:5;}"
+        "}"
         "</style>"
     )
 
@@ -363,7 +386,8 @@ def build_related_html(related_posts: Optional[Iterable[dict]]) -> str:
         "<!-- wp:html -->"
         f"{style}"
         '<div class="cf-rel">'
-        '<div class="cf-rel__head">年間買取10000件　パワトレ買取実績</div>'
+        '<div class="cf-rel__head">年間買取10000件　'
+        '<br class="cf-rel__br" />パワトレ買取実績</div>'
         f'<div class="cf-rel__grid">{"".join(cards)}</div>'
         "</div>"
         "<!-- /wp:html -->"
