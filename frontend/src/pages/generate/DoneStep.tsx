@@ -86,7 +86,7 @@ export default function DoneStep({
         </Section>
 
         <Section num={2} label="次のアクション">
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div className="cf-btnrow">
             {!published && (
               <>
                 <button

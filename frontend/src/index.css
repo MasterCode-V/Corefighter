@@ -1242,6 +1242,13 @@ a {
   flex-wrap: wrap;
 }
 
+.cf-btnrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 /* ---------------------------------------------------------------- tables */
 
 .cf-table {
@@ -2120,6 +2127,7 @@ a {
 }
 
 /* ------------------------------------------------------------ responsive */
+/* Desktop styles above stay unchanged. Rules here only kick in on smaller viewports. */
 
 @media (max-width: 1080px) {
   .cf-cards {
@@ -2145,11 +2153,199 @@ a {
   .cf-grid-3 {
     grid-template-columns: 1fr;
   }
+
+  .cf-page,
+  .cf-page--wide,
+  .cf-page--narrow {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .cf-topaction {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .cf-steps {
+    padding-left: 14px;
+    padding-right: 14px;
+    gap: 6px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .cf-steps::-webkit-scrollbar {
+    display: none;
+  }
+
+  .cf-step__line {
+    min-width: 10px;
+    flex: 0 0 10px;
+  }
+
+  .cf-modal,
+  .cf-modal--wide {
+    width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px);
+    margin: 12px;
+  }
+
+  .cf-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 @media (max-width: 640px) {
-  .cf-grid-2 {
+  :root {
+    --header-h: 56px;
+  }
+
+  body {
+    font-size: 13.5px;
+  }
+
+  /* ---- header / chrome ---- */
+  .cf-header__inner {
+    padding: 0 12px;
+    gap: 8px;
+  }
+
+  .cf-logo img {
+    height: 30px;
+    margin-bottom: 2px;
+  }
+
+  .cf-header__account {
+    display: none;
+  }
+
+  .cf-header__right {
+    gap: 6px;
+  }
+
+  .cf-chip-admin,
+  .cf-btn-logout {
+    height: 28px;
+    padding: 0 10px;
+    font-size: 11px;
+  }
+
+  .cf-header__deco {
+    width: min(48%, 280px);
+    opacity: 0.55;
+  }
+
+  .cf-backbar__inner {
+    padding: 8px 12px;
+  }
+
+  .cf-btn-back {
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+
+  /* ---- stepper ---- */
+  .cf-steps {
+    padding: 12px 12px 2px;
+  }
+
+  .cf-step {
+    gap: 6px;
+    padding: 5px 12px 5px 5px;
+    font-size: 11px;
+  }
+
+  .cf-step__num {
+    width: 20px;
+    height: 20px;
+    font-size: 10px;
+  }
+
+  /* ---- page / panels ---- */
+  .cf-page,
+  .cf-page--wide,
+  .cf-page--narrow {
+    padding: 12px 12px 28px;
+  }
+
+  .cf-topaction {
+    padding: 10px 12px 0;
+  }
+
+  .cf-topaction .cf-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .cf-panel {
+    padding: 14px 12px;
+    border-radius: 8px;
+  }
+
+  .cf-title h2 {
+    font-size: 16px;
+  }
+
+  .cf-title__sub {
+    font-size: 12px;
+  }
+
+  .cf-section__label {
+    font-size: 13px;
+  }
+
+  /* ---- forms / filters ---- */
+  .cf-grid-2,
+  .cf-grid-3 {
     grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .cf-grid-2 > *,
+  .cf-grid-3 > * {
+    grid-column: auto !important;
+  }
+
+  .cf-daterange {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .cf-daterange span {
+    display: none;
+  }
+
+  .cf-resultbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .cf-resultbar__sort {
+    width: 100%;
+  }
+
+  .cf-resultbar__sort .cf-select {
+    width: 100%;
+  }
+
+  .cf-storechips {
+    gap: 8px;
+  }
+
+  .cf-storechip {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 0;
+    justify-content: space-between;
+  }
+
+  /* ---- cards / list ---- */
+  .cf-cards {
+    grid-template-columns: 1fr;
+    gap: 12px;
   }
 
   .cf-card {
@@ -2158,17 +2354,162 @@ a {
 
   .cf-card__thumb {
     width: 100%;
-    height: 150px;
+    height: 160px;
   }
 
   .cf-card__main {
-    padding: 13px 14px;
+    padding: 12px 14px;
+  }
+
+  .cf-card__actions {
+    flex-wrap: wrap;
+  }
+
+  .cf-card__actions .cf-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  /* ---- actions / CTAs ---- */
+  .cf-actionrow,
+  .cf-btnrow {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .cf-actionrow .cf-btn,
+  .cf-actionrow .cf-cta,
+  .cf-btnrow .cf-btn {
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
   }
 
   .cf-cta {
-    min-width: 240px;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .cf-btn--lg {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* ---- preview / editor ---- */
+  .cf-preview {
+    font-size: 13px;
+    overflow-x: auto;
+  }
+
+  .cf-related__grid {
+    gap: 6px;
+    padding: 6px;
+  }
+
+  .cf-related__overlay {
+    width: 90%;
+    padding: 4px 6px;
+    font-size: 10px;
+    line-height: 1.35;
+    max-height: 78%;
+    overflow: hidden;
+  }
+
+  .cf-related__title {
+    -webkit-line-clamp: 4;
+  }
+
+  .cf-related-candidates {
+    max-height: 180px;
+  }
+
+  .cf-tagrow {
+    gap: 6px;
+  }
+
+  .cf-rte__toolbar {
+    gap: 4px;
+  }
+
+  /* ---- modal / dialogs ---- */
+  .cf-modal-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .cf-modal,
+  .cf-modal--wide {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    border-radius: 12px 12px 0 0;
+    max-height: min(92vh, 100%);
+    overflow: auto;
+  }
+
+  .cf-modal__actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .cf-modal__actions .cf-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* ---- login ---- */
+  .cf-login {
+    padding: 24px 14px;
+  }
+
+  .cf-login__card {
+    width: 100%;
+    max-width: 100%;
+    padding: 22px 18px;
+  }
+
+  /* ---- ops / admin ---- */
+  .ops-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .ops-item .cf-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .cf-pager {
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+  }
+
+  .cf-pager button {
+    min-width: 36px;
   }
 }
+
+@media (max-width: 380px) {
+  .cf-related__grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .cf-storechip {
+    flex: 1 1 100%;
+  }
+
+  .cf-step span:not(.cf-step__num) {
+    max-width: 4.5em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
 
 /* Rich text editor (footer HTML) */
 .cf-rte {
