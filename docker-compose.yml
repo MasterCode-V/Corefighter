@@ -92,7 +92,7 @@ services:
       REDIS_HOST: redis
       S3_ENDPOINT_URL: http://minio:9000
       S3_PUBLIC_URL: http://localhost:9000/${S3_BUCKET:-corefighter-media}
-      BACKEND_CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,https://core-fighter.red,https://www.core-fighter.red}
     ports:
       - "8000:8000"
     volumes:
